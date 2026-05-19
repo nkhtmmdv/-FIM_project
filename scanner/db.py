@@ -59,6 +59,15 @@ def file_owner_telegram()->Dict[str,Dict[str,str]]:
             "  AND u.telegram_chat_id != ''"
         )
         return {r['file_path']: {'token': r['telegram_bot_token'] or '', 'chat_id': r['telegram_chat_id']} for r in cur.fetchall()}
+def get_scan_interval()->int:
+    """Return scan interval seconds from DB settings, fallback to env."""
+    try:
+        with conn_cursor() as cur:
+            cur.execute("SELECT value FROM settings WHERE key='scan_interval_seconds'")
+            row=cur.fetchone()
+            if row and row['value']: return max(10,int(row['value']))
+    except Exception: pass
+    return int(os.getenv('SCAN_INTERVAL_SECONDS','120'))
 def global_telegram()->Dict[str,str]:
     """Return global fallback Telegram credentials from settings table."""
     with conn_cursor() as cur:

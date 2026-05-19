@@ -29,7 +29,8 @@ def serve()->None:
 def main()->None:
     """Run scanner forever until SIGTERM."""
     global LAST_SCAN_ID
-    signal.signal(signal.SIGTERM,_signal); signal.signal(signal.SIGINT,_signal); Thread(target=serve,daemon=True).start(); interval=int(os.getenv('SCAN_INTERVAL_SECONDS','30'))
+    signal.signal(signal.SIGTERM,_signal); signal.signal(signal.SIGINT,_signal); Thread(target=serve,daemon=True).start()
     while not STOP.is_set():
+        import db as _db; interval=_db.get_scan_interval()
         LAST_SCAN_ID=scanner.run_scan('scheduler'); STOP.wait(interval)
 if __name__=='__main__': main()
