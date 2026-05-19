@@ -17,11 +17,11 @@ def validate_secrets()->None:
     if not os.getenv('POSTGRES_PASSWORD',''):
         raise RuntimeError('POSTGRES_PASSWORD must be set in .env')
 def hash_password(password:str)->str:
-    """Hash a password with bcrypt."""
-    return PWD.hash(password)
+    """Hash a password with bcrypt (max 72 bytes)."""
+    return PWD.hash(password[:72])
 def verify_password(password:str, hashed:str)->bool:
-    """Verify a bcrypt password."""
-    return PWD.verify(password,hashed)
+    """Verify a bcrypt password (max 72 bytes)."""
+    return PWD.verify(password[:72],hashed)
 def create_token(username:str, kind:str, minutes:int)->str:
     """Create a signed JWT."""
     exp=datetime.now(timezone.utc)+timedelta(minutes=minutes); return jwt.encode({'sub':username,'type':kind,'exp':exp},os.getenv('JWT_SECRET',''),algorithm=ALGORITHM)
