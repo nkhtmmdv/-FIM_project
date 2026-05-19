@@ -24,11 +24,6 @@ services:
       postgres: { condition: service_healthy }
     volumes:
       - /etc:/monitored/etc:ro
-      - /bin:/monitored/bin:ro
-      - /usr/bin:/monitored/usr/bin:ro
-      - /usr/sbin:/monitored/usr/sbin:ro
-      - /sbin:/monitored/sbin:ro
-      - /lib/systemd:/monitored/lib/systemd:ro
       - fim_logs:/var/log/fim
     networks: [fim-internal]
 
