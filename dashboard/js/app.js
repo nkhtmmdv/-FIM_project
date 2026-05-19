@@ -577,7 +577,15 @@ async function login(forceUser, forcePass) {
         route();
         if (!socket) startWS();
     } else {
-        if (errEl) { errEl.textContent = data.detail || 'Login failed'; errEl.style.display = ''; }
+        var msg = 'Login failed';
+        if (data && data.detail) {
+            if (Array.isArray(data.detail)) {
+                msg = data.detail.map(function(e){ return e.msg || JSON.stringify(e); }).join(', ');
+            } else {
+                msg = data.detail;
+            }
+        }
+        if (errEl) { errEl.textContent = msg; errEl.style.display = ''; }
     }
 }
 
