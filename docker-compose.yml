@@ -25,7 +25,7 @@ services:
     volumes:
       - /etc:/monitored/etc:ro
       - fim_logs:/var/log/fim
-    networks: [fim-internal]
+    networks: [fim-internal, fim-external]
 
   api:
     build: ./api
