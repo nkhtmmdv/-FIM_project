@@ -543,30 +543,42 @@ async function exportBaseline() {
    ========================================================= */
 
 /**
- * Login using credentials from the login form.
+ * Login using credentials from the login form (or passed directly).
+ * @param {string} [forceUser] - Optional username override
+ * @param {string} [forcePass] - Optional password override
  */
-async function login() {
-    var user = document.getElementById('loginUser').value;
-    var pass = document.getElementById('loginPass').value;
+async function login(forceUser, forcePass) {
+    var user = forceUser || document.getElementById('loginUser').value.trim();
+    var pass = forcePass || document.getElementById('loginPass').value;
     var errEl = document.getElementById('loginError');
-    errEl.style.display = 'none';
+    if (errEl) errEl.style.display = 'none';
 
-    var r = await fetch(API + '/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: user, password: pass })
-    });
+    if (!user || !pass) {
+        if (errEl) { errEl.textContent = 'Enter username and password'; errEl.style.display = ''; }
+        return;
+    }
+
+    var r;
+    try {
+        r = await fetch(API + '/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: user, password: pass })
+        });
+    } catch (e) {
+        if (errEl) { errEl.textContent = 'Server unavailable'; errEl.style.display = ''; }
+        return;
+    }
     var data = await r.json();
-    if (data && data.access_token) {
+    if (r.ok && data && data.access_token) {
         token = data.access_token;
         localStorage.setItem('fimToken', token);
         if (data.refresh_token) localStorage.setItem('fimRefresh', data.refresh_token);
         location.hash = '#dashboard';
         route();
-        startWS();
+        if (!socket) startWS();
     } else {
-        errEl.textContent = data.detail || 'Login failed';
-        errEl.style.display = '';
+        if (errEl) { errEl.textContent = data.detail || 'Login failed'; errEl.style.display = ''; }
     }
 }
 
@@ -595,18 +607,21 @@ async function register() {
     if (!username || !password) { errEl.textContent = 'Username and password required'; errEl.style.display = ''; return; }
     if (password.length < 8) { errEl.textContent = 'Password must be at least 8 characters'; errEl.style.display = ''; return; }
 
-    var r = await fetch(API + '/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password, telegram_bot_token: tgToken, telegram_chat_id: tgChat })
-    });
+    var r;
+    try {
+        r = await fetch(API + '/auth/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: username, password: password, telegram_bot_token: tgToken, telegram_chat_id: tgChat })
+        });
+    } catch (e) {
+        errEl.textContent = 'Server unavailable'; errEl.style.display = ''; return;
+    }
     var data = await r.json();
     if (r.ok && data.ok) {
-        // Auto-login after registration
-        document.getElementById('loginUser').value = username;
-        document.getElementById('loginPass').value = password;
         showLogin();
-        await login();
+        // Pass credentials directly — don't rely on DOM state
+        await login(username, password);
     } else {
         errEl.textContent = data.detail || 'Registration failed';
         errEl.style.display = '';

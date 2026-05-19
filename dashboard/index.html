@@ -40,8 +40,8 @@
   <div style="max-width:380px;margin:80px auto;padding:0 24px">
     <div class="panel" id="loginPanel">
       <h2 style="margin-bottom:20px;text-align:center">Sign In</h2>
-      <input id="loginUser" class="input" placeholder="Username" style="margin-bottom:12px">
-      <input id="loginPass" class="input" placeholder="Password" type="password" style="margin-bottom:16px">
+      <input id="loginUser" class="input" placeholder="Username" style="margin-bottom:12px" onkeydown="if(event.key==='Enter')login()">
+      <input id="loginPass" class="input" placeholder="Password" type="password" style="margin-bottom:16px" onkeydown="if(event.key==='Enter')login()">
       <button class="btn primary" style="width:100%" onclick="login()">Login</button>
       <p id="loginError" style="color:var(--red);font-size:12px;margin-top:10px;display:none"></p>
       <p style="text-align:center;margin-top:14px;font-size:13px;color:var(--muted)">
@@ -50,10 +50,10 @@
     </div>
     <div class="panel" id="registerPanel" style="display:none">
       <h2 style="margin-bottom:20px;text-align:center">Create Account</h2>
-      <input id="regUser" class="input" placeholder="Username" style="margin-bottom:12px">
-      <input id="regPass" class="input" placeholder="Password (min 8 chars)" type="password" style="margin-bottom:12px">
+      <input id="regUser" class="input" placeholder="Username" style="margin-bottom:12px" onkeydown="if(event.key==='Enter')register()">
+      <input id="regPass" class="input" placeholder="Password (min 8 chars)" type="password" style="margin-bottom:12px" onkeydown="if(event.key==='Enter')register()">
       <input id="regToken" class="input" placeholder="Telegram Bot Token (from @BotFather)" style="margin-bottom:12px">
-      <input id="regChat" class="input" placeholder="Your Telegram Chat ID" style="margin-bottom:16px">
+      <input id="regChat" class="input" placeholder="Your Telegram Chat ID" style="margin-bottom:16px" onkeydown="if(event.key==='Enter')register()">
       <button class="btn primary" style="width:100%" onclick="register()">Create Account</button>
       <p id="regError" style="color:var(--red);font-size:12px;margin-top:10px;display:none"></p>
       <p style="text-align:center;margin-top:14px;font-size:13px;color:var(--muted)">

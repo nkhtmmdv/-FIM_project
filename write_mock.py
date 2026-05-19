@@ -135,6 +135,12 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json({'username': 'admin', 'role': 'admin', 'telegram_chat_id': USER_STORE.get('admin', {}).get('telegram_chat_id', ''), 'telegram_bot_token': USER_STORE.get('admin', {}).get('telegram_bot_token', ''), 'telegram_bot_token_set': False, 'created_at': '2025-05-19T00:00:00Z', 'last_login': None})
         if path == '/api/v1/settings':
             return self._json(SETTINGS_STORE)
+        if path == '/ws/live':
+            # WebSocket upgrade not supported in mock — return 426 silently
+            self.send_response(426)
+            self.send_header('Content-Length', '0')
+            self.end_headers()
+            return
         return super().do_GET()
 
 if __name__ == '__main__':
