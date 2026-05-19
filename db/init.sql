@@ -95,30 +95,3 @@ CREATE INDEX IF NOT EXISTS idx_file_events_file_path   ON file_events(file_path)
 CREATE INDEX IF NOT EXISTS idx_file_events_event_type  ON file_events(event_type);
 CREATE INDEX IF NOT EXISTS idx_scan_runs_started_at    ON scan_runs(started_at DESC);
 
--- Seed monitored paths
-INSERT INTO monitored_files(file_path, severity) VALUES
-    ('/monitored/etc/passwd',       'CRITICAL'),
-    ('/monitored/etc/shadow',       'CRITICAL'),
-    ('/monitored/etc/sudoers',      'CRITICAL'),
-    ('/monitored/etc/sudoers.d/',   'WARNING'),
-    ('/monitored/etc/ssh/sshd_config', 'WARNING'),
-    ('/monitored/etc/ssh/ssh_config',  'WARNING'),
-    ('/monitored/etc/hosts',        'WARNING'),
-    ('/monitored/etc/hostname',     'INFO'),
-    ('/monitored/etc/resolv.conf',  'INFO'),
-    ('/monitored/etc/crontab',      'WARNING'),
-    ('/monitored/etc/cron.d/',      'WARNING'),
-    ('/monitored/etc/cron.daily/',  'WARNING'),
-    ('/monitored/etc/cron.hourly/', 'WARNING'),
-    ('/monitored/etc/rc.local',     'WARNING'),
-    ('/monitored/etc/profile',      'WARNING'),
-    ('/monitored/etc/bashrc',       'WARNING'),
-    ('/monitored/etc/environment',  'WARNING'),
-    ('/monitored/bin/bash',         'CRITICAL'),
-    ('/monitored/bin/sh',           'CRITICAL'),
-    ('/monitored/usr/bin/sudo',     'CRITICAL'),
-    ('/monitored/usr/bin/passwd',   'CRITICAL'),
-    ('/monitored/usr/sbin/sshd',    'CRITICAL'),
-    ('/monitored/sbin/init',        'CRITICAL'),
-    ('/monitored/lib/systemd/systemd', 'CRITICAL')
-ON CONFLICT DO NOTHING;
