@@ -140,6 +140,21 @@ def dispatch(events: List[Dict[str, object]]) -> None:
     # Remaining events go to global fallback
     if no_personal and global_token and global_chat:
         _send_to(global_token, global_chat, no_personal)
+    elif no_personal and not (global_token and global_chat):
+        # Last resort: use any user that has Telegram credentials configured
+        try:
+            import db as scanner_db
+            with scanner_db.conn_cursor() as cur:
+                cur.execute(
+                    "SELECT telegram_bot_token, telegram_chat_id FROM users "
+                    "WHERE telegram_chat_id IS NOT NULL AND telegram_chat_id != '' "
+                    "LIMIT 1"
+                )
+                row = cur.fetchone()
+                if row:
+                    _send_to(row['telegram_bot_token'] or '', row['telegram_chat_id'], no_personal)
+        except Exception:
+            pass
 
     send_email(events)
 
