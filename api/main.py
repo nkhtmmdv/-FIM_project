@@ -1,9 +1,7 @@
 """FastAPI application for FIM."""
-from __future__ import annotations
 import os, signal, time
 from typing import Set
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, Depends, HTTPException
-from fastapi.params import Body
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -24,13 +22,13 @@ def startup()->None:
     validate_secrets(); init_pool(); ensure_admin()
 @app.post('/api/v1/auth/login')
 @limiter.limit('100/minute')
-async def login(request:Request, body:LoginRequest=Body(...)):
+async def login(request:Request, body:LoginRequest):
     """Authenticate and return access plus refresh tokens."""
     row=fetch_one('SELECT * FROM users WHERE username=%s',(body.username,))
     if not row or not verify_password(body.password,row['password_hash']): raise HTTPException(status_code=401,detail='bad credentials')
     execute('UPDATE users SET last_login=NOW() WHERE username=%s',(body.username,)); return {'access_token':create_token(body.username,'access',int(os.getenv('ACCESS_TOKEN_EXPIRE_MINUTES','60'))),'refresh_token':create_token(body.username,'refresh',int(os.getenv('REFRESH_TOKEN_EXPIRE_DAYS','7'))*1440),'token_type':'bearer'}
 @app.post('/api/v1/auth/refresh')
-def refresh(body:TokenRefresh=Body(...)):
+def refresh(body:TokenRefresh):
     """Refresh an access token."""
     from jose import jwt, JWTError
     try: payload=jwt.decode(body.refresh_token,os.getenv('JWT_SECRET',''),algorithms=['HS256'])
