@@ -32,8 +32,5 @@ def current_user(creds:HTTPAuthorizationCredentials=Depends(SECURITY))->Dict[str
     if payload.get('type')!='access': raise HTTPException(status_code=401,detail='invalid token type')
     return {'username':str(payload['sub'])}
 def ensure_admin()->None:
-    """Create initial admin user from environment if missing."""
-    username=os.getenv('ADMIN_USERNAME','admin'); password=os.getenv('ADMIN_PASSWORD','')
-    if not password:
-        import logging; logging.warning('ADMIN_PASSWORD not set — skipping auto-admin creation'); return
-    if not fetch_one('SELECT id FROM users WHERE username=%s',(username,)): execute('INSERT INTO users(username,password_hash,role,telegram_chat_id,telegram_bot_token) VALUES(%s,%s,%s,%s,%s)',(username,hash_password(password),'admin','',''))
+    """No-op: all users register via the site."""
+    pass
