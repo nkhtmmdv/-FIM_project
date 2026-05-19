@@ -5,13 +5,14 @@
  */
 
 let socket = null;
-let wsRetryDelay = 1000;
+let wsRetryDelay = 2000;
 let wsFailCount = 0;
+let wsEverConnected = false;
 const WS_MAX_RETRY = 30000;
-const WS_BANNER_AFTER = 3; // show banner only after this many consecutive failures
 
 /**
  * Open a WebSocket connection to /ws/live and wire up event handling.
+ * Banner is only shown after a successful connection is later lost.
  */
 function connectWS() {
     const banner = document.getElementById('reconnect');
@@ -27,10 +28,12 @@ function connectWS() {
     }
 
     socket.onopen = function () {
-        wsRetryDelay = 1000;
+        wsRetryDelay = 2000;
         wsFailCount = 0;
+        wsEverConnected = true;
         if (banner) banner.classList.remove('show');
-        document.getElementById('statusDot').classList.remove('offline');
+        var dot = document.getElementById('statusDot');
+        if (dot) dot.classList.remove('offline');
     };
 
     socket.onmessage = function (event) {
@@ -50,9 +53,11 @@ function connectWS() {
 
     socket.onclose = function () {
         wsFailCount++;
-        if (wsFailCount >= WS_BANNER_AFTER) {
+        // Only show the red banner if we previously had a working connection
+        if (wsEverConnected) {
             if (banner) banner.classList.add('show');
-            document.getElementById('statusDot').classList.add('offline');
+            var dot = document.getElementById('statusDot');
+            if (dot) dot.classList.add('offline');
         }
         scheduleReconnect();
     };

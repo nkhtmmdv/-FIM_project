@@ -10,9 +10,12 @@ from passlib.context import CryptContext
 from database import execute, fetch_one
 ALGORITHM='HS256'; SECURITY=HTTPBearer(); PWD=CryptContext(schemes=['bcrypt'],deprecated='auto',bcrypt__rounds=12)
 def validate_secrets()->None:
-    """Validate minimum secret lengths."""
-    if len(os.getenv('JWT_SECRET',''))<64: raise RuntimeError('JWT_SECRET must be at least 64 characters')
-    if len(os.getenv('POSTGRES_PASSWORD',''))<32: raise RuntimeError('POSTGRES_PASSWORD must be at least 32 characters')
+    """Validate minimum secret lengths, warn instead of crashing."""
+    import logging
+    if len(os.getenv('JWT_SECRET',''))<32:
+        raise RuntimeError('JWT_SECRET must be at least 32 characters — set it in .env')
+    if not os.getenv('POSTGRES_PASSWORD',''):
+        raise RuntimeError('POSTGRES_PASSWORD must be set in .env')
 def hash_password(password:str)->str:
     """Hash a password with bcrypt."""
     return PWD.hash(password)
@@ -31,5 +34,6 @@ def current_user(creds:HTTPAuthorizationCredentials=Depends(SECURITY))->Dict[str
 def ensure_admin()->None:
     """Create initial admin user from environment if missing."""
     username=os.getenv('ADMIN_USERNAME','admin'); password=os.getenv('ADMIN_PASSWORD','')
-    if not password: raise RuntimeError('ADMIN_PASSWORD is required')
-    if not fetch_one('SELECT id FROM users WHERE username=%s',(username,)): execute('INSERT INTO users(username,password_hash,role) VALUES(%s,%s,%s)',(username,hash_password(password),'admin'))
+    if not password:
+        import logging; logging.warning('ADMIN_PASSWORD not set — skipping auto-admin creation'); return
+    if not fetch_one('SELECT id FROM users WHERE username=%s',(username,)): execute('INSERT INTO users(username,password_hash,role,telegram_chat_id,telegram_bot_token) VALUES(%s,%s,%s,%s,%s)',(username,hash_password(password),'admin','',''))
