@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FIM Sentinel</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+</head>
+<body>
+
+<!-- Reconnecting banner -->
+<div id="reconnect" class="banner">Connection lost. Reconnecting...</div>
+
+<!-- Navbar -->
+<nav class="nav">
+  <div class="nav-left">
+    <div class="logo">FIM Sentinel</div>
+    <div class="nav-links">
+      <a href="#dashboard" class="active" data-page="dashboard">Dashboard</a>
+      <a href="#alerts" data-page="alerts">Alerts</a>
+      <a href="#history" data-page="history">History</a>
+      <a href="#settings" data-page="settings">Settings</a>
+    </div>
+  </div>
+  <div class="nav-right">
+    <div class="status">
+      <span class="dot" id="statusDot"></span>
+      <span id="scanState">Live</span>
+      <span>Last scan: <b id="lastScan">--</b></span>
+    </div>
+    <button class="btn sm" id="logoutBtn" onclick="logout()">Logout</button>
+  </div>
+</nav>
+
+<!-- ==================== PAGE: LOGIN ==================== -->
+<div id="page-login" class="page">
+  <div style="max-width:380px;margin:80px auto;padding:0 24px">
+    <div class="panel" id="loginPanel">
+      <h2 style="margin-bottom:20px;text-align:center">Sign In</h2>
+      <input id="loginUser" class="input" placeholder="Username" style="margin-bottom:12px">
+      <input id="loginPass" class="input" placeholder="Password" type="password" style="margin-bottom:16px">
+      <button class="btn primary" style="width:100%" onclick="login()">Login</button>
+      <p id="loginError" style="color:var(--red);font-size:12px;margin-top:10px;display:none"></p>
+      <p style="text-align:center;margin-top:14px;font-size:13px;color:var(--muted)">
+        No account? <a href="#" onclick="showRegister()" style="color:var(--accent)">Register</a>
+      </p>
+    </div>
+    <div class="panel" id="registerPanel" style="display:none">
+      <h2 style="margin-bottom:20px;text-align:center">Create Account</h2>
+      <input id="regUser" class="input" placeholder="Username" style="margin-bottom:12px">
+      <input id="regPass" class="input" placeholder="Password (min 8 chars)" type="password" style="margin-bottom:12px">
+      <input id="regToken" class="input" placeholder="Telegram Bot Token (from @BotFather)" style="margin-bottom:12px">
+      <input id="regChat" class="input" placeholder="Your Telegram Chat ID" style="margin-bottom:16px">
+      <button class="btn primary" style="width:100%" onclick="register()">Create Account</button>
+      <p id="regError" style="color:var(--red);font-size:12px;margin-top:10px;display:none"></p>
+      <p style="text-align:center;margin-top:14px;font-size:13px;color:var(--muted)">
+        Already have account? <a href="#" onclick="showLogin()" style="color:var(--accent)">Sign In</a>
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== PAGE: DASHBOARD ==================== -->
+<div id="page-dashboard" class="page">
+  <!-- Stat cards -->
+  <section class="grid-4">
+    <div class="card" id="cardTotal"><small>Total Files</small><h1 id="total">0</h1></div>
+    <div class="card" id="cardClean"><small>Clean</small><h1 id="clean">0</h1></div>
+    <div class="card" id="cardAlerts"><small>Alerts (24h)</small><h1 id="alertCount">0</h1></div>
+    <div class="card" id="cardCritical"><small>Critical</small><h1 id="critical">0</h1></div>
+  </section>
+
+  <!-- Main layout -->
+  <div class="container">
+    <div class="layout-2-1">
+      <!-- File status table -->
+      <div class="panel">
+        <div class="row" style="justify-content:space-between;margin-bottom:12px">
+          <div class="tabs" id="fileTabs">
+            <button class="active" data-filter="all">All</button>
+            <button data-filter="CRITICAL">Critical</button>
+            <button data-filter="changed">Changed</button>
+          </div>
+          <input class="search" id="fileSearch" placeholder="Search files..." style="width:220px;margin:0">
+        </div>
+        <div style="overflow-x:auto">
+          <table>
+            <thead><tr>
+              <th></th><th>File Path</th><th>Last Checked</th><th>Change</th><th>Severity</th><th>Hash</th><th>Actions</th>
+            </tr></thead>
+            <tbody id="filesBody"></tbody>
+          </table>
+        </div>
+        <div class="pagination" id="filesPagination"></div>
+      </div>
+
+      <!-- Right sidebar -->
+      <div class="stack">
+        <!-- Recent alerts feed -->
+        <div class="panel">
+          <h2 class="mb-8">Recent Alerts</h2>
+          <div id="feed" style="max-height:360px;overflow-y:auto"></div>
+        </div>
+
+        <!-- Scan progress widget -->
+        <div class="panel">
+          <h2 class="mb-8">Scan Status</h2>
+          <div class="progress-ring">
+            <svg width="100" height="100" viewBox="0 0 100 100">
+              <circle cx="50" cy="50" r="40" fill="none" stroke="#1e293b" stroke-width="8"/>
+              <circle id="progressCircle" cx="50" cy="50" r="40" fill="none" stroke="var(--accent)" stroke-width="8"
+                stroke-dasharray="251.3" stroke-dashoffset="0" stroke-linecap="round" transform="rotate(-90 50 50)"/>
+            </svg>
+          </div>
+          <div style="text-align:center">
+            <div id="nextScanCountdown" style="font-size:13px;color:var(--muted)">Next scan in --s</div>
+            <button class="btn primary mt-16" onclick="triggerScan()">Manual Trigger</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Timeline chart -->
+    <div class="panel mt-16">
+      <h2 class="mb-8">Alerts per Hour (24h)</h2>
+      <canvas id="timeline" height="80"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== PAGE: ALERTS ==================== -->
+<div id="page-alerts" class="page">
+  <div class="container" style="padding-top:24px">
+    <div class="panel">
+      <div class="row" style="justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+        <h2>Alert History</h2>
+        <div class="row gap-sm">
+          <select class="input" id="alertSeverityFilter" style="width:130px" onchange="loadAlerts()">
+            <option value="">All Severity</option>
+            <option value="CRITICAL">Critical</option>
+            <option value="WARNING">Warning</option>
+            <option value="INFO">Info</option>
+          </select>
+          <select class="input" id="alertTypeFilter" style="width:180px" onchange="loadAlerts()">
+            <option value="">All Types</option>
+            <option value="MODIFIED">Modified</option>
+            <option value="DELETED">Deleted</option>
+            <option value="ADDED">Added</option>
+            <option value="PERMISSIONS_CHANGED">Permissions</option>
+            <option value="OWNER_CHANGED">Owner</option>
+          </select>
+          <input class="input" id="alertPathSearch" placeholder="File path..." style="width:200px" oninput="loadAlerts()">
+          <button class="btn" onclick="exportCSV()">Export CSV</button>
+        </div>
+      </div>
+      <table>
+        <thead><tr>
+          <th>Time</th><th>File Path</th><th>Change</th><th>Severity</th><th>Hash Before</th><th>Hash After</th><th>Ack</th>
+        </tr></thead>
+        <tbody id="alertsBody"></tbody>
+      </table>
+      <div class="pagination" id="alertsPagination"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== PAGE: HISTORY ==================== -->
+<div id="page-history" class="page">
+  <div class="container" style="padding-top:24px">
+    <div class="panel">
+      <h2 class="mb-8">Scan History</h2>
+      <table>
+        <thead><tr>
+          <th>#</th><th>Started</th><th>Duration</th><th>Files Scanned</th><th>Changes</th><th>Status</th><th>Triggered By</th>
+        </tr></thead>
+        <tbody id="historyBody"></tbody>
+      </table>
+    </div>
+    <!-- Expanded scan detail -->
+    <div class="panel mt-16" id="scanDetail" style="display:none">
+      <h2 class="mb-8">Scan #<span id="scanDetailId"></span> Changes</h2>
+      <table>
+        <thead><tr><th>File Path</th><th>Change</th><th>Severity</th></tr></thead>
+        <tbody id="scanDetailBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== PAGE: SETTINGS ==================== -->
+<div id="page-settings" class="page">
+  <div class="container" style="padding-top:24px">
+    <div class="layout-1-1">
+      <!-- Monitored files -->
+      <div class="panel">
+        <h2 class="mb-8">Monitored Files</h2>
+        <div class="row gap-sm" style="margin-bottom:12px">
+          <input class="input" id="newFilePath" placeholder="/path/to/file">
+          <select class="input" id="newFileSeverity" style="width:140px">
+            <option value="WARNING">Warning</option>
+            <option value="CRITICAL">Critical</option>
+            <option value="INFO">Info</option>
+          </select>
+          <button class="btn primary" onclick="addFile()">Add</button>
+        </div>
+        <div style="max-height:400px;overflow-y:auto">
+          <table>
+            <thead><tr><th>Path</th><th>Severity</th><th>Active</th><th></th></tr></thead>
+            <tbody id="monitoredBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Configuration -->
+      <div class="stack">
+        <div class="panel">
+          <h2 class="mb-8">Scan Configuration</h2>
+          <div class="setting-row">
+            <span>Scan Interval</span>
+            <div class="row gap-sm">
+              <input type="range" id="scanInterval" min="10" max="300" value="30" style="width:140px">
+              <span id="scanIntervalVal">30s</span>
+            </div>
+          </div>
+          <div class="setting-row"><span>Alert on permission change</span><label class="toggle"><input type="checkbox" id="togPerms" checked><span class="slider"></span></label></div>
+          <div class="setting-row"><span>Alert on owner change</span><label class="toggle"><input type="checkbox" id="togOwner" checked><span class="slider"></span></label></div>
+          <div class="setting-row"><span>Alert on new files</span><label class="toggle"><input type="checkbox" id="togNew" checked><span class="slider"></span></label></div>
+          <div class="setting-row"><span>Alert on deleted files</span><label class="toggle"><input type="checkbox" id="togDel" checked><span class="slider"></span></label></div>
+          <div style="margin-top:14px">
+            <button class="btn primary" onclick="saveToggles()">Save Settings</button>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h2 class="mb-8">My Profile &amp; Personal Telegram</h2>
+          <p style="color:var(--muted);font-size:12px;margin-bottom:12px">Alerts for files you added will arrive <b>only in your Telegram</b>.</p>
+          <input class="input" id="tgToken" placeholder="Your Bot Token (from @BotFather)" style="margin-bottom:8px">
+          <input class="input" id="tgChat" placeholder="Your Chat ID (numeric)" style="margin-bottom:12px">
+          <hr style="border:none;border-top:1px solid rgba(255,255,255,.07);margin:12px 0">
+          <p style="color:var(--muted);font-size:12px;margin-bottom:8px">Change password (optional)</p>
+          <input class="input" id="profCurPass" placeholder="Current password" type="password" style="margin-bottom:8px">
+          <input class="input" id="profNewPass" placeholder="New password (min 8 chars)" type="password" style="margin-bottom:12px">
+          <div class="row gap-sm">
+            <button class="btn primary" onclick="saveProfile()">Save Profile</button>
+            <button class="btn" onclick="testTelegramPersonal()">Test Telegram</button>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h2 class="mb-8">SMTP Email Alerts</h2>
+          <input class="input" id="smtpHost" placeholder="SMTP Host (e.g. smtp.gmail.com)" style="margin-bottom:8px">
+          <input class="input" id="smtpPort" placeholder="Port (587)" style="margin-bottom:8px">
+          <input class="input" id="smtpUser" placeholder="SMTP Username" style="margin-bottom:8px">
+          <input class="input" id="smtpTo" placeholder="Alert recipient email" style="margin-bottom:12px">
+          <div class="row gap-sm">
+            <button class="btn primary" onclick="testEmail()">Save Settings</button>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h2 class="mb-8">Baseline Management</h2>
+          <div id="baselineInfo" style="margin-bottom:12px;color:var(--muted);font-size:13px">Loading...</div>
+          <div class="row gap-sm">
+            <button class="btn primary" onclick="createBaseline()">Create New Baseline</button>
+            <button class="btn" onclick="exportBaseline()">Export JSON</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== FILE DETAIL DRAWER ==================== -->
+<div id="drawer" class="drawer">
+  <div class="drawer-header">
+    <h2 id="drawerTitle">File Detail</h2>
+    <button class="btn sm" onclick="closeDrawer()">Close</button>
+  </div>
+  <div id="drawerContent"></div>
+</div>
+
+<!-- ==================== CONFIRMATION MODAL ==================== -->
+<div id="modalBackdrop" class="modal-backdrop">
+  <div class="modal">
+    <h2 id="modalTitle">Confirm</h2>
+    <p id="modalText" style="color:var(--muted);margin-bottom:16px"></p>
+    <input class="input" id="modalInput" placeholder="Enter password to confirm" type="password" style="margin-bottom:16px;display:none">
+    <div class="row" style="justify-content:flex-end;gap:8px">
+      <button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn danger" id="modalConfirm">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<!-- Scripts -->
+<script src="/js/websocket.js"></script>
+<script src="/js/charts.js"></script>
+<script src="/js/app.js"></script>
+</body>
+</html>

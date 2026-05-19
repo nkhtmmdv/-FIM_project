@@ -1,0 +1,7 @@
+.env
+__pycache__/
+*.pyc
+postgres_data/
+dashboard/mock_server.py
+*.log
+*.sha256

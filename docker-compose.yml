@@ -1,0 +1,58 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    env_file: .env
+    networks: [fim-internal]
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  scanner:
+    build: ./scanner
+    restart: unless-stopped
+    env_file: .env
+    read_only: true
+    tmpfs: [/tmp]
+    user: "1001:1001"
+    depends_on:
+      postgres: { condition: service_healthy }
+    volumes:
+      - /etc:/monitored/etc:ro
+      - /bin:/monitored/bin:ro
+      - /usr/bin:/monitored/usr/bin:ro
+      - /usr/sbin:/monitored/usr/sbin:ro
+      - /sbin:/monitored/sbin:ro
+      - /lib/systemd:/monitored/lib/systemd:ro
+      - fim_logs:/var/log/fim
+    networks: [fim-internal]
+
+  api:
+    build: ./api
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      postgres: { condition: service_healthy }
+    ports: ["${API_PORT:-8000}:8000"]
+    networks: [fim-internal, fim-external]
+
+  dashboard:
+    build: ./dashboard
+    restart: unless-stopped
+    depends_on: [api]
+    ports: ["${HTTP_PORT:-8080}:80"]
+    networks: [fim-internal, fim-external]
+
+networks:
+  fim-internal:
+    internal: true
+  fim-external: {}
+
+volumes:
+  postgres_data: {}
+  fim_logs: {}
