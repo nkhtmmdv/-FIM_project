@@ -78,7 +78,6 @@ function route() {
     var hash = location.hash.replace('#', '') || 'dashboard';
     if (!token && hash !== 'login') { showPage('login'); return; }
     showPage(hash);
-    if (token && !socket) startWS();
 }
 
 /* =========================================================
@@ -821,4 +820,5 @@ window.addEventListener('load', function () {
     initFileSearch();
     window.addEventListener('hashchange', route);
     route();
+    if (token) startWS();
 });
