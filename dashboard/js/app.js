@@ -78,6 +78,7 @@ function route() {
     var hash = location.hash.replace('#', '') || 'dashboard';
     if (!token && hash !== 'login') { showPage('login'); return; }
     showPage(hash);
+    if (token && !socket) startWS();
 }
 
 /* =========================================================
@@ -562,6 +563,7 @@ async function login() {
         if (data.refresh_token) localStorage.setItem('fimRefresh', data.refresh_token);
         location.hash = '#dashboard';
         route();
+        startWS();
     } else {
         errEl.textContent = data.detail || 'Login failed';
         errEl.style.display = '';
@@ -618,6 +620,7 @@ function logout() {
     token = '';
     localStorage.removeItem('fimToken');
     localStorage.removeItem('fimRefresh');
+    stopWS();
     showPage('login');
 }
 

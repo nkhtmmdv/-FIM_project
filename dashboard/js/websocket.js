@@ -74,3 +74,23 @@ function scheduleReconnect() {
     setTimeout(connectWS, wsRetryDelay);
     wsRetryDelay = Math.min(wsRetryDelay * 1.5, WS_MAX_RETRY);
 }
+
+/**
+ * Start WebSocket — call after successful login.
+ */
+function startWS() {
+    wsFailCount = 0;
+    wsRetryDelay = 2000;
+    wsEverConnected = false;
+    connectWS();
+}
+
+/**
+ * Stop WebSocket — call on logout.
+ */
+function stopWS() {
+    wsEverConnected = false;
+    if (socket) { socket.onclose = null; socket.close(); socket = null; }
+    var banner = document.getElementById('reconnect');
+    if (banner) banner.classList.remove('show');
+}
