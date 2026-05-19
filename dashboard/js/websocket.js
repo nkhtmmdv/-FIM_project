@@ -51,8 +51,12 @@ function connectWS() {
         }
     };
 
-    socket.onclose = function () {
+    socket.onclose = function (evt) {
         wsFailCount++;
+        // Codes 1002/1003/1006 with no prior connection = server doesn't support WS, stop retrying
+        if (!wsEverConnected && wsFailCount >= 2) {
+            return; // give up silently — no banner, no retry
+        }
         // Only show the red banner if we previously had a working connection
         if (wsEverConnected) {
             if (banner) banner.classList.add('show');
