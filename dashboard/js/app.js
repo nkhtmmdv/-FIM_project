@@ -602,8 +602,6 @@ async function register() {
     errEl.style.display = 'none';
     var username = document.getElementById('regUser').value.trim();
     var password = document.getElementById('regPass').value;
-    var tgToken  = document.getElementById('regToken').value.trim();
-    var tgChat   = document.getElementById('regChat').value.trim();
     if (!username || !password) { errEl.textContent = 'Username and password required'; errEl.style.display = ''; return; }
     if (password.length < 8) { errEl.textContent = 'Password must be at least 8 characters'; errEl.style.display = ''; return; }
 
@@ -612,7 +610,7 @@ async function register() {
         r = await fetch(API + '/auth/register', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username: username, password: password, telegram_bot_token: tgToken, telegram_chat_id: tgChat })
+            body: JSON.stringify({ username: username, password: password })
         });
     } catch (e) {
         errEl.textContent = 'Server unavailable'; errEl.style.display = ''; return;
@@ -620,7 +618,6 @@ async function register() {
     var data = await r.json();
     if (r.ok && data.ok) {
         showLogin();
-        // Pass credentials directly — don't rely on DOM state
         await login(username, password);
     } else {
         errEl.textContent = data.detail || 'Registration failed';
@@ -730,22 +727,6 @@ async function testTelegramPersonal() {
 }
 
 /**
- * Legacy global Telegram test (kept for global settings panel if present).
- */
-async function testTelegram() {
-    var tok  = document.getElementById('tgToken') ? document.getElementById('tgToken').value.trim() : '';
-    var chat = document.getElementById('tgChat')  ? document.getElementById('tgChat').value.trim()  : '';
-    if (!tok || !chat) { showToast('Enter Bot Token and Chat ID first', 'warning'); return; }
-    await saveSettings([
-        { key: 'telegram_bot_token', value: tok },
-        { key: 'telegram_chat_id',   value: chat }
-    ]);
-    var res = await api('/settings/test-telegram', { method: 'POST' });
-    if (res && res.ok) showToast('Telegram test sent! Check your bot.', 'success');
-    else showToast('Failed: ' + (res && res.error ? res.error : 'unknown error'), 'error');
-}
-
-/**
  * Save SMTP credentials to DB then send a test email.
  */
 async function testEmail() {
@@ -836,7 +817,6 @@ window.addEventListener('fim-live', function (e) {
 
 window.addEventListener('load', function () {
     if (Notification.permission === 'default') Notification.requestPermission();
-    connectWS();
     initFileTabs();
     initFileSearch();
     window.addEventListener('hashchange', route);
