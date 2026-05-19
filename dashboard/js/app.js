@@ -488,12 +488,23 @@ async function removeFile(encodedPath) {
  * Trigger manual scan via API.
  */
 async function triggerScan() {
-    document.getElementById('scanState').textContent = 'Scanning...';
+    var stateEl = document.getElementById('scanState');
+    var lastScanEl = document.getElementById('lastScan');
+    if (stateEl) stateEl.textContent = 'Scanning...';
+    var t0 = Date.now();
     await api('/scan/trigger', { method: 'POST' });
+    var elapsed = Date.now() - t0;
     countdownValue = scanInterval;
-    setTimeout(function () {
+    setTimeout(async function () {
+        var scan = await api('/scan/status');
+        var changes = 0;
+        if (scan) {
+            changes = (scan.files_modified || 0) + (scan.files_deleted || 0) + (scan.files_added || 0);
+            if (lastScanEl) lastScanEl.textContent = fmtTime(scan.completed_at || scan.started_at);
+            if (stateEl) stateEl.textContent = changes > 0 ? changes + ' change(s) found' : 'No changes';
+        }
         if (currentPage === 'dashboard') loadDashboard();
-    }, 3000);
+    }, 2000);
 }
 
 /**

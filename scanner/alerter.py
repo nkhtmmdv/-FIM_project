@@ -109,11 +109,13 @@ def dispatch(events: List[Dict[str, object]]) -> None:
     if not events:
         return
 
+    import logging
     try:
         import db as scanner_db
         owner_map = scanner_db.file_owner_telegram()   # file_path -> {token, chat_id}
         glob = scanner_db.global_telegram()            # global fallback
-    except Exception:
+    except Exception as e:
+        logging.error(f'[alerter] DB error loading creds: {e}')
         owner_map = {}
         glob = {}
 
@@ -161,7 +163,9 @@ def dispatch(events: List[Dict[str, object]]) -> None:
 
 def _send_to(token: str, chat: str, events: List[Dict[str, object]]) -> None:
     """Send batched alerts to a single Telegram destination."""
+    import logging
     if not token or not chat:
+        logging.warning(f'[alerter] _send_to skipped: token={bool(token)} chat={bool(chat)}')
         return
     host = os.uname().nodename
     chunks = [
@@ -177,8 +181,10 @@ def _send_to(token: str, chat: str, events: List[Dict[str, object]]) -> None:
                     timeout=10
                 )
                 r.raise_for_status()
+                logging.info(f'[alerter] Telegram sent OK to chat={chat}')
                 break
-            except requests.RequestException:
+            except requests.RequestException as e:
+                logging.error(f'[alerter] Telegram error attempt {attempt}: {e}')
                 if attempt == 3:
                     raise
                 time.sleep(2 ** attempt)
