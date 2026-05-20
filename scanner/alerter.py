@@ -103,68 +103,42 @@ def send_email(events: List[Dict[str, object]]) -> None:
 
 
 def dispatch(events: List[Dict[str, object]]) -> None:
-    """Dispatch alerts per-user (personal Telegram) with global fallback."""
+    """Dispatch Telegram alerts to all users with credentials configured."""
     if not events:
         return
 
     import logging
     try:
         import db as scanner_db
-        owner_map = scanner_db.file_owner_telegram()   # file_path -> {token, chat_id}
-        glob = scanner_db.global_telegram()            # global fallback
+        with scanner_db.conn_cursor() as cur:
+            cur.execute(
+                "SELECT telegram_bot_token, telegram_chat_id FROM users "
+                "WHERE telegram_bot_token IS NOT NULL AND telegram_bot_token != '' "
+                "  AND telegram_chat_id  IS NOT NULL AND telegram_chat_id  != ''"
+            )
+            user_creds = cur.fetchall()
     except Exception as e:
-        logging.error(f'[alerter] DB error loading creds: {e}')
-        owner_map = {}
-        glob = {}
+        logging.error(f'[alerter] DB error loading user creds: {e}')
+        user_creds = []
 
-    global_token = glob.get('telegram_bot_token') or _cfg('telegram_bot_token', 'TELEGRAM_BOT_TOKEN')
-    global_chat  = glob.get('telegram_chat_id')   or _cfg('telegram_chat_id',   'TELEGRAM_CHAT_ID')
+    sent = False
+    for row in user_creds:
+        tok  = (row['telegram_bot_token'] or '').strip()
+        chat = (row['telegram_chat_id']   or '').strip()
+        if tok and chat:
+            logging.info(f'[alerter] dispatch to chat={chat} token_prefix={tok[:12]}...')
+            _send_to(tok, chat, events)
+            sent = True
 
-    # Group events by (token, chat_id) destination
-    buckets: Dict[tuple, List[Dict[str, object]]] = {}
-    no_personal: List[Dict[str, object]] = []
-
-    for ev in events:
-        path = ev['file_path']
-        # Normalize container path to DB path style (remove /monitored prefix if exists)
-        if path.startswith('/monitored'):
-            normalized_path = path[10:] # len('/monitored') = 10
+    if not sent:
+        # Last resort: global settings / env
+        global_token = _cfg('telegram_bot_token', 'TELEGRAM_BOT_TOKEN')
+        global_chat  = _cfg('telegram_chat_id',   'TELEGRAM_CHAT_ID')
+        if global_token and global_chat:
+            logging.info(f'[alerter] dispatch (global) to chat={global_chat} token_prefix={global_token[:12]}...')
+            _send_to(global_token, global_chat, events)
         else:
-            normalized_path = path
-
-        creds = owner_map.get(normalized_path) or owner_map.get(path)
-        if creds and creds.get('chat_id'):
-            tok = creds['token'] or global_token
-            key = (tok, creds['chat_id'])
-            buckets.setdefault(key, []).append(ev)
-        else:
-            no_personal.append(ev)
-
-    # Send to each personal destination
-    for (tok, chat), evs in buckets.items():
-        _send_to(tok, chat, evs)
-
-    # Remaining events: try any user with Telegram first, then global fallback
-    if no_personal:
-        sent = False
-        # 1) Try any user that has Telegram credentials configured
-        try:
-            import db as scanner_db
-            with scanner_db.conn_cursor() as cur:
-                cur.execute(
-                    "SELECT telegram_bot_token, telegram_chat_id FROM users "
-                    "WHERE telegram_chat_id IS NOT NULL AND telegram_chat_id != '' "
-                    "LIMIT 1"
-                )
-                row = cur.fetchone()
-                if row and row['telegram_bot_token'] and row['telegram_chat_id']:
-                    _send_to(row['telegram_bot_token'], row['telegram_chat_id'], no_personal)
-                    sent = True
-        except Exception:
-            pass
-        # 2) Fallback to global if user send didn't happen
-        if not sent and global_token and global_chat:
-            _send_to(global_token, global_chat, no_personal)
+            logging.warning('[alerter] No Telegram credentials found — alert not sent.')
 
     send_email(events)
 
