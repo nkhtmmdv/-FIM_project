@@ -771,15 +771,32 @@ async function testTelegramPersonal() {
     var tgToken = document.getElementById('tgToken').value.trim();
     var tgChat  = document.getElementById('tgChat').value.trim();
     if (!tgChat) { showToast('Enter your Chat ID first', 'warning'); return; }
-    // Only save if a new token was typed (not empty)
-    if (tgToken) await saveProfile();
+    if (!tgToken) {
+        showToast('\u26a0\ufe0f Enter your Bot Token first, then click Save Profile, then Test', 'warning');
+        document.getElementById('tgToken').focus();
+        return;
+    }
+    // Save new token then test
+    await saveProfile();
     var res = await fetch(API + '/auth/test-telegram', {
         method: 'POST',
         headers: { 'Authorization': 'Bearer ' + token }
     });
     var data = await res.json();
-    if (data && data.ok) showToast('\u2705 Test message sent to your Telegram!', 'success');
-    else showToast('\u274c Failed: ' + (data && data.error ? data.error : 'unknown'), 'error');
+    if (data && data.ok) {
+        showToast('\u2705 Test message sent to your Telegram!', 'success');
+        // Refresh placeholder to reflect saved state
+        var tgInput = document.getElementById('tgToken');
+        tgInput.value = '';
+        tgInput.placeholder = 'Token saved \u2014 enter new to replace';
+    } else {
+        var err = data && data.error ? data.error : 'unknown';
+        if (err.indexOf('401') !== -1 || err.indexOf('Unauthorized') !== -1) {
+            showToast('\u274c Token is invalid. Get a new one from @BotFather and re-enter it.', 'error');
+        } else {
+            showToast('\u274c Failed: ' + err, 'error');
+        }
+    }
 }
 
 /**
