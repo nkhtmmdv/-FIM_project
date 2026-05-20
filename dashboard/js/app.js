@@ -429,7 +429,12 @@ async function loadSettings() {
     if (prof.ok) {
         var p = await prof.json();
         if (p.telegram_chat_id) document.getElementById('tgChat').value = p.telegram_chat_id;
-        if (p.telegram_bot_token) document.getElementById('tgToken').value = p.telegram_bot_token;
+        // Never pre-fill token with masked value — leave blank, show placeholder
+        var tgInput = document.getElementById('tgToken');
+        tgInput.value = '';
+        tgInput.placeholder = p.telegram_bot_token_set
+            ? 'Token saved — enter new to replace'
+            : 'Your Bot Token (from @BotFather)';
     }
 
     // Load global/SMTP settings from DB
@@ -766,15 +771,15 @@ async function testTelegramPersonal() {
     var tgToken = document.getElementById('tgToken').value.trim();
     var tgChat  = document.getElementById('tgChat').value.trim();
     if (!tgChat) { showToast('Enter your Chat ID first', 'warning'); return; }
-    // Save first, then test
-    await saveProfile();
+    // Only save if a new token was typed (not empty)
+    if (tgToken) await saveProfile();
     var res = await fetch(API + '/auth/test-telegram', {
         method: 'POST',
         headers: { 'Authorization': 'Bearer ' + token }
     });
     var data = await res.json();
-    if (data && data.ok) showToast('Test message sent to your Telegram!', 'success');
-    else showToast('Failed: ' + (data && data.error ? data.error : 'unknown'), 'error');
+    if (data && data.ok) showToast('\u2705 Test message sent to your Telegram!', 'success');
+    else showToast('\u274c Failed: ' + (data && data.error ? data.error : 'unknown'), 'error');
 }
 
 /**

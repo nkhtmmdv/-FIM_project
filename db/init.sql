@@ -95,13 +95,8 @@ CREATE INDEX IF NOT EXISTS idx_file_events_file_path   ON file_events(file_path)
 CREATE INDEX IF NOT EXISTS idx_file_events_event_type  ON file_events(event_type);
 CREATE INDEX IF NOT EXISTS idx_scan_runs_started_at    ON scan_runs(started_at DESC);
 
--- Default monitored paths (only critical /etc files — no binary dirs)
+-- Default monitored path
 INSERT INTO monitored_files(file_path, severity) VALUES
-    ('/monitored/etc/passwd',          'CRITICAL'),
-    ('/monitored/etc/shadow',          'CRITICAL'),
-    ('/monitored/etc/sudoers',         'CRITICAL'),
-    ('/monitored/etc/ssh/sshd_config', 'WARNING'),
-    ('/monitored/etc/hosts',           'WARNING'),
-    ('/monitored/etc/crontab',         'WARNING')
+    ('/monitored/etc/passwd', 'CRITICAL')
 ON CONFLICT DO NOTHING;
 
