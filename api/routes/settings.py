@@ -62,24 +62,6 @@ def update_settings(body: SettingsBatch, request: Request, user=Depends(current_
     return {'ok': True}
 
 
-@router.post('/test-telegram')
-def test_telegram(user=Depends(current_user)):
-    """Send a test Telegram message using stored credentials."""
-    import requests as req
-    token = _get('telegram_bot_token')
-    chat = _get('telegram_chat_id')
-    if not token or not chat:
-        return {'ok': False, 'error': 'Telegram not configured. Set token and chat ID in Settings.'}
-    url = f'https://api.telegram.org/bot{token}/sendMessage'
-    text = '\U0001f6a8 FIM Sentinel \u2014 Test alert\n\nIf you see this, Telegram integration is working!'
-    try:
-        r = req.post(url, json={'chat_id': chat, 'text': text}, timeout=10)
-        r.raise_for_status()
-        return {'ok': True}
-    except Exception as exc:
-        return {'ok': False, 'error': str(exc)}
-
-
 def _get(key: str) -> str:
     """Get a setting value from DB."""
     row = fetch_one('SELECT value FROM settings WHERE key=%s', (key,))
