@@ -103,11 +103,12 @@ def send_email(events: List[Dict[str, object]]) -> None:
 
 
 def dispatch(events: List[Dict[str, object]]) -> None:
-    """Dispatch Telegram alerts to all users with credentials configured."""
+    """Dispatch Telegram alerts using credentials from user profiles only."""
     if not events:
         return
 
     import logging
+    sent = False
     try:
         import db as scanner_db
         with scanner_db.conn_cursor() as cur:
@@ -116,13 +117,12 @@ def dispatch(events: List[Dict[str, object]]) -> None:
                 "WHERE telegram_bot_token IS NOT NULL AND telegram_bot_token != '' "
                 "  AND telegram_chat_id  IS NOT NULL AND telegram_chat_id  != ''"
             )
-            user_creds = cur.fetchall()
+            rows = cur.fetchall()
     except Exception as e:
         logging.error(f'[alerter] DB error loading user creds: {e}')
-        user_creds = []
+        rows = []
 
-    sent = False
-    for row in user_creds:
+    for row in rows:
         tok  = (row['telegram_bot_token'] or '').strip()
         chat = (row['telegram_chat_id']   or '').strip()
         if tok and chat:
@@ -131,14 +131,7 @@ def dispatch(events: List[Dict[str, object]]) -> None:
             sent = True
 
     if not sent:
-        # Last resort: global settings / env
-        global_token = _cfg('telegram_bot_token', 'TELEGRAM_BOT_TOKEN')
-        global_chat  = _cfg('telegram_chat_id',   'TELEGRAM_CHAT_ID')
-        if global_token and global_chat:
-            logging.info(f'[alerter] dispatch (global) to chat={global_chat} token_prefix={global_token[:12]}...')
-            _send_to(global_token, global_chat, events)
-        else:
-            logging.warning('[alerter] No Telegram credentials found — alert not sent.')
+        logging.warning('[alerter] No Telegram credentials in user profiles — alert not sent via Telegram.')
 
     send_email(events)
 

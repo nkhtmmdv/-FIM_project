@@ -497,16 +497,19 @@ async function triggerScan() {
     var t0 = Date.now();
     await api('/scan/trigger', { method: 'POST' });
     countdownValue = scanInterval;
-    // Poll until scan completes (max 30 attempts, 1s apart)
-    var attempts = 0;
-    var prevId = null;
-    while (attempts < 30) {
+    // Wait for the new scan to appear then wait for it to finish
+    var triggeredId = null;
+    for (var i = 0; i < 40; i++) {
         await sleep(1000);
         var scan = await api('/scan/status');
         if (!scan) break;
-        if (prevId === null) prevId = scan.id;
-        else if (scan.id !== prevId) break; // new scan finished
-        attempts++;
+        if (triggeredId === null) {
+            // Wait for a RUNNING scan to appear
+            if (scan.status === 'RUNNING') { triggeredId = scan.id; }
+        } else {
+            // Wait for the scan we triggered to finish
+            if (scan.id === triggeredId && scan.status !== 'RUNNING') break;
+        }
     }
     var elapsed = ((Date.now() - t0) / 1000).toFixed(1);
     var scan = await api('/scan/status');
@@ -514,7 +517,9 @@ async function triggerScan() {
     if (scan) {
         changes = (scan.files_modified || 0) + (scan.files_deleted || 0) + (scan.files_added || 0);
         if (lastScanEl) lastScanEl.textContent = fmtTime(scan.completed_at || scan.started_at);
-        if (stateEl) stateEl.textContent = changes > 0 ? changes + ' change(s) in ' + elapsed + 's' : 'No changes (' + elapsed + 's)';
+        if (stateEl) stateEl.textContent = changes > 0 ? changes + ' change(s) found' : 'No changes';
+    } else {
+        if (stateEl) stateEl.textContent = 'Done (' + elapsed + 's)';
     }
     if (currentPage === 'dashboard') loadDashboard();
 }
