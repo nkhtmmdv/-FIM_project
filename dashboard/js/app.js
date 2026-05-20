@@ -16,6 +16,9 @@ let alertsPageOffset = 0;
 let filesPageOffset = 0;
 const PAGE_SIZE = 50;
 
+/** Promise-based sleep. */
+function sleep(ms) { return new Promise(function(r) { setTimeout(r, ms); }); }
+
 /* =========================================================
    API Client
    ========================================================= */
@@ -493,18 +496,27 @@ async function triggerScan() {
     if (stateEl) stateEl.textContent = 'Scanning...';
     var t0 = Date.now();
     await api('/scan/trigger', { method: 'POST' });
-    var elapsed = Date.now() - t0;
     countdownValue = scanInterval;
-    setTimeout(async function () {
+    // Poll until scan completes (max 30 attempts, 1s apart)
+    var attempts = 0;
+    var prevId = null;
+    while (attempts < 30) {
+        await sleep(1000);
         var scan = await api('/scan/status');
-        var changes = 0;
-        if (scan) {
-            changes = (scan.files_modified || 0) + (scan.files_deleted || 0) + (scan.files_added || 0);
-            if (lastScanEl) lastScanEl.textContent = fmtTime(scan.completed_at || scan.started_at);
-            if (stateEl) stateEl.textContent = changes > 0 ? changes + ' change(s) found' : 'No changes';
-        }
-        if (currentPage === 'dashboard') loadDashboard();
-    }, 2000);
+        if (!scan) break;
+        if (prevId === null) prevId = scan.id;
+        else if (scan.id !== prevId) break; // new scan finished
+        attempts++;
+    }
+    var elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+    var scan = await api('/scan/status');
+    var changes = 0;
+    if (scan) {
+        changes = (scan.files_modified || 0) + (scan.files_deleted || 0) + (scan.files_added || 0);
+        if (lastScanEl) lastScanEl.textContent = fmtTime(scan.completed_at || scan.started_at);
+        if (stateEl) stateEl.textContent = changes > 0 ? changes + ' change(s) in ' + elapsed + 's' : 'No changes (' + elapsed + 's)';
+    }
+    if (currentPage === 'dashboard') loadDashboard();
 }
 
 /**

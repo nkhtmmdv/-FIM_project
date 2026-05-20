@@ -144,11 +144,10 @@ def dispatch(events: List[Dict[str, object]]) -> None:
     for (tok, chat), evs in buckets.items():
         _send_to(tok, chat, evs)
 
-    # Remaining events go to global fallback
-    if no_personal and global_token and global_chat:
-        _send_to(global_token, global_chat, no_personal)
-    elif no_personal and not (global_token and global_chat):
-        # Last resort: use any user that has Telegram credentials configured
+    # Remaining events: try any user with Telegram first, then global fallback
+    if no_personal:
+        sent = False
+        # 1) Try any user that has Telegram credentials configured
         try:
             import db as scanner_db
             with scanner_db.conn_cursor() as cur:
@@ -158,10 +157,14 @@ def dispatch(events: List[Dict[str, object]]) -> None:
                     "LIMIT 1"
                 )
                 row = cur.fetchone()
-                if row:
-                    _send_to(row['telegram_bot_token'] or '', row['telegram_chat_id'], no_personal)
+                if row and row['telegram_bot_token'] and row['telegram_chat_id']:
+                    _send_to(row['telegram_bot_token'], row['telegram_chat_id'], no_personal)
+                    sent = True
         except Exception:
             pass
+        # 2) Fallback to global if user send didn't happen
+        if not sent and global_token and global_chat:
+            _send_to(global_token, global_chat, no_personal)
 
     send_email(events)
 
@@ -172,6 +175,7 @@ def _send_to(token: str, chat: str, events: List[Dict[str, object]]) -> None:
     if not token or not chat:
         logging.warning(f'[alerter] _send_to skipped: token={bool(token)} chat={bool(chat)}')
         return
+    logging.info(f'[alerter] sending to chat={chat} token_prefix={token[:12]}...')
     try:
         host = socket.gethostname()
     except Exception:
