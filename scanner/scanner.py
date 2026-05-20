@@ -46,6 +46,14 @@ def run_scan(triggered_by:str='scheduler', reset_baseline:bool=False)->int:
         snaps={p:snapshot(p).to_dict() for p in expanded}; first=not db.baseline_exists()
         if first or reset_baseline:
             db.replace_baseline(scan_id,snaps.values()); stats={'duration_ms':int((time.time()-started)*1000),'scanned':len(snaps),'clean':len(snaps),'modified':0,'deleted':0,'added':0}; db.finish_scan(scan_id,stats,'BASELINE_CREATED'); return scan_id
-        events,stats=compare(scan_id,snaps,db.load_baseline(),db.severities(),cfg); stats['duration_ms']=int((time.time()-started)*1000); db.finish_scan(scan_id,stats,'COMPLETE'); alerter.dispatch([e for e in events if e['event_type']!='UNCHANGED']); return scan_id
+        events,stats=compare(scan_id,snaps,db.load_baseline(),db.severities(),cfg)
+        stats['duration_ms']=int((time.time()-started)*1000)
+        db.finish_scan(scan_id,stats,'COMPLETE')
+        alerts=[e for e in events if e['event_type']!='UNCHANGED']
+        alerter.dispatch(alerts)
+        # Update baseline to current state so next scan only alerts on NEW changes
+        if alerts:
+            db.replace_baseline(scan_id,snaps.values())
+        return scan_id
     except Exception as exc:
         db.finish_scan(scan_id,{'duration_ms':int((time.time()-started)*1000)},'FAILED'); LOGGER.error(str(exc), {'scan_id':scan_id,'event_type':'SCAN_FAILED'}); raise
