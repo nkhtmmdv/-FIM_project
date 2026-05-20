@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from slowapi.middleware import SlowAPIMiddleware
-from auth import create_token, current_user, validate_secrets, verify_password
+from auth import create_token, current_user, ensure_admin, validate_secrets, verify_password
 from database import fetch_one, execute, init_pool
 from models.alert import LoginRequest, TokenRefresh
 from routes import files, alerts, baseline, stats, settings, profile
@@ -19,7 +19,7 @@ async def security_and_logging(request:Request, call_next):
 @app.on_event('startup')
 def startup()->None:
     """Initialise app dependencies."""
-    validate_secrets(); init_pool()
+    validate_secrets(); init_pool(); ensure_admin()
 @app.post('/api/v1/auth/login')
 @limiter.limit('100/minute')
 async def login(request:Request, body:LoginRequest):

@@ -57,6 +57,33 @@ def format_alert(event: Dict[str, object], host: str) -> str:
     return "\n".join(lines)
 
 
+def send_telegram(events: List[Dict[str, object]]) -> None:
+    """Send batched Telegram alerts with exponential backoff."""
+    token = _cfg('telegram_bot_token', 'TELEGRAM_BOT_TOKEN')
+    chat = _cfg('telegram_chat_id', 'TELEGRAM_CHAT_ID')
+    if not token or not chat or not events:
+        return
+    host = os.uname().nodename
+    chunks = [
+        '\n\n'.join(format_alert(e, host) for e in events[i:i + 5])
+        for i in range(0, len(events), 5)
+    ]
+    for text in chunks:
+        for attempt in range(4):
+            try:
+                r = requests.post(
+                    TELEGRAM_URL.format(token=token),
+                    json={'chat_id': chat, 'text': text},
+                    timeout=10
+                )
+                r.raise_for_status()
+                break
+            except requests.RequestException:
+                if attempt == 3:
+                    raise
+                time.sleep(2 ** attempt)
+
+
 def send_email(events: List[Dict[str, object]]) -> None:
     """Send optional SMTP email alert."""
     smtp_host = _cfg('smtp_host', 'SMTP_HOST')

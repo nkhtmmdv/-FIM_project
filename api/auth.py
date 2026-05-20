@@ -31,3 +31,6 @@ def current_user(creds:HTTPAuthorizationCredentials=Depends(SECURITY))->Dict[str
     except JWTError as exc: raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,detail='invalid token') from exc
     if payload.get('type')!='access': raise HTTPException(status_code=401,detail='invalid token type')
     return {'username':str(payload['sub'])}
+def ensure_admin()->None:
+    """No-op: all users register via the site."""
+    pass
