@@ -13,32 +13,26 @@ import requests
 
 TELEGRAM_URL = 'https://api.telegram.org/bot{token}/sendMessage'
 
-# Cache settings from DB to avoid querying on every alert
-_settings_cache: Dict[str, str] = {}
-_cache_ts: float = 0.0
-CACHE_TTL = 30.0  # seconds
-
-
 def _load_settings() -> Dict[str, str]:
-    """Load settings from DB, cache for CACHE_TTL seconds."""
-    global _settings_cache, _cache_ts
-    if time.time() - _cache_ts < CACHE_TTL and _settings_cache:
-        return _settings_cache
+    """Load fresh settings directly from DB on every call."""
     try:
         import db as scanner_db
         with scanner_db.conn_cursor() as cur:
             cur.execute('SELECT key, value FROM settings')
-            _settings_cache = {r['key']: r['value'] for r in cur.fetchall()}
-        _cache_ts = time.time()
+            return {r['key']: r['value'] for r in cur.fetchall()}
     except Exception:
         pass
-    return _settings_cache
+    return {}
 
 
 def _cfg(key: str, env_key: str, default: str = '') -> str:
-    """Get a config value: DB settings first, then env, then default."""
+    """Get config: DB settings first, then env, then default."""
     settings = _load_settings()
-    return settings.get(key) or os.getenv(env_key, default)
+    # Always prioritize non-empty DB value over environment variable
+    val = settings.get(key)
+    if val and val.strip():
+        return val.strip()
+    return os.getenv(env_key, default).strip()
 
 
 def format_alert(event: Dict[str, object], host: str) -> str:
