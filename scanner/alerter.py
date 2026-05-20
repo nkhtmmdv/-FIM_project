@@ -63,7 +63,7 @@ def send_telegram(events: List[Dict[str, object]]) -> None:
     chat = _cfg('telegram_chat_id', 'TELEGRAM_CHAT_ID')
     if not token or not chat or not events:
         return
-    host = os.uname().nodename
+    host = socket.gethostname()
     chunks = [
         '\n\n'.join(format_alert(e, host) for e in events[i:i + 5])
         for i in range(0, len(events), 5)
@@ -90,7 +90,11 @@ def send_email(events: List[Dict[str, object]]) -> None:
     target = _cfg('alert_email_to', 'ALERT_EMAIL_TO')
     if not smtp_host or not target or not events:
         return
-    hostname = os.uname().nodename
+    import socket
+    try:
+        hostname = socket.gethostname()
+    except Exception:
+        hostname = 'unknown'
     msg = EmailMessage()
     msg['Subject'] = f'FIM alerts: {len(events)} change(s)'
     msg['From'] = _cfg('smtp_from', 'SMTP_FROM', 'fim@example.com')
@@ -163,11 +167,14 @@ def dispatch(events: List[Dict[str, object]]) -> None:
 
 def _send_to(token: str, chat: str, events: List[Dict[str, object]]) -> None:
     """Send batched alerts to a single Telegram destination."""
-    import logging
+    import logging, socket
     if not token or not chat:
         logging.warning(f'[alerter] _send_to skipped: token={bool(token)} chat={bool(chat)}')
         return
-    host = os.uname().nodename
+    try:
+        host = socket.gethostname()
+    except Exception:
+        host = 'unknown'
     chunks = [
         '\n\n'.join(format_alert(e, host) for e in events[i:i + 5])
         for i in range(0, len(events), 5)
