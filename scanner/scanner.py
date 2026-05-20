@@ -52,8 +52,10 @@ def run_scan(triggered_by:str='scheduler', reset_baseline:bool=False)->int:
         alerts=[e for e in events if e['event_type']!='UNCHANGED']
         alerter.dispatch(alerts)
         # Update baseline to current state so next scan only alerts on NEW changes
+        # Exclude DELETED/UNREADABLE files so they don't repeat-alert every scan
         if alerts:
-            db.replace_baseline(scan_id,snaps.values())
+            live_snaps=[s for s in snaps.values() if s['sha256_hash'] not in ('DELETED','UNREADABLE')]
+            db.replace_baseline(scan_id,live_snaps)
         return scan_id
     except Exception as exc:
         db.finish_scan(scan_id,{'duration_ms':int((time.time()-started)*1000)},'FAILED'); LOGGER.error(str(exc), {'scan_id':scan_id,'event_type':'SCAN_FAILED'}); raise

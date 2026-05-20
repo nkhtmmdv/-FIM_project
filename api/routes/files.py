@@ -32,3 +32,8 @@ def add_file(body:FileAdd,request:Request,user=Depends(current_user)):
 def remove_file(path:str,request:Request,user=Depends(current_user)):
     """Deactivate a monitored file path."""
     target='/'+path; execute('UPDATE monitored_files SET is_active=FALSE WHERE file_path=%s',(target,)); audit(user['username'],'file.remove',target,request.client.host if request.client else None); return {'ok':True}
+
+@router.post('/enable/{path:path}')
+def enable_file(path:str,request:Request,user=Depends(current_user)):
+    """Re-activate a disabled monitored file path."""
+    target='/'+path; execute('UPDATE monitored_files SET is_active=TRUE WHERE file_path=%s',(target,)); audit(user['username'],'file.enable',target,request.client.host if request.client else None); return {'ok':True}

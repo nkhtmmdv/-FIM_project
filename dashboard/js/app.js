@@ -407,11 +407,15 @@ async function loadSettings() {
     if (files) {
         var body = document.getElementById('monitoredBody');
         body.innerHTML = files.map(function (f) {
-            return '<tr>' +
+            var enc = encodeURIComponent(f.file_path);
+            var toggleBtn = f.is_active
+                ? '<button class="btn sm danger" onclick="disableFile(\'' + enc + '\')">Disable</button>'
+                : '<button class="btn sm" onclick="enableFile(\'' + enc + '\')">Enable</button>';
+            return '<tr style="opacity:' + (f.is_active ? '1' : '0.45') + '">' +
                 '<td>' + esc(f.file_path) + '</td>' +
                 '<td><span class="badge ' + (f.severity || 'INFO') + '">' + (f.severity || '') + '</span></td>' +
-                '<td>' + (f.is_active ? '\u2705' : '\u274c') + '</td>' +
-                '<td><button class="btn sm danger" onclick="removeFile(\'' + encodeURIComponent(f.file_path) + '\')">Remove</button></td></tr>';
+                '<td>' + (f.is_active ? '<span style="color:#4ade80">Active</span>' : '<span style="color:#f87171">Disabled</span>') + '</td>' +
+                '<td>' + toggleBtn + '</td></tr>';
         }).join('');
     }
     var bl = await api('/baseline/status');
@@ -481,6 +485,18 @@ async function removeFile(encodedPath) {
     closeDrawer();
     if (currentPage === 'settings') loadSettings();
     else loadDashboard();
+}
+
+async function disableFile(encodedPath) {
+    await api('/files/' + encodedPath, { method: 'DELETE' });
+    showToast('Monitoring disabled for this path', 'info');
+    loadSettings();
+}
+
+async function enableFile(encodedPath) {
+    await api('/files/enable/' + encodedPath, { method: 'POST' });
+    showToast('Monitoring enabled for this path', 'success');
+    loadSettings();
 }
 
 /* =========================================================
