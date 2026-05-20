@@ -32,18 +32,5 @@ def current_user(creds:HTTPAuthorizationCredentials=Depends(SECURITY))->Dict[str
     if payload.get('type')!='access': raise HTTPException(status_code=401,detail='invalid token type')
     return {'username':str(payload['sub'])}
 def ensure_admin()->None:
-    """Create a default admin account if no users exist yet."""
-    import logging
-    existing = fetch_one('SELECT COUNT(*) AS cnt FROM users')
-    if existing and existing['cnt'] > 0:
-        return
-    default_password = os.getenv('ADMIN_DEFAULT_PASSWORD', 'Admin1234!')
-    execute(
-        'INSERT INTO users(username, password_hash, role) VALUES(%s, %s, %s) '
-        'ON CONFLICT DO NOTHING',
-        ('admin', hash_password(default_password), 'admin')
-    )
-    logging.warning(
-        f'[auth] No users found — created default account: '
-        f'username=admin password={default_password} — CHANGE IT IMMEDIATELY'
-    )
+    """No-op: users register themselves via the site."""
+    pass
