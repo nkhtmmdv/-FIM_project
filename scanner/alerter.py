@@ -131,7 +131,14 @@ def dispatch(events: List[Dict[str, object]]) -> None:
     no_personal: List[Dict[str, object]] = []
 
     for ev in events:
-        creds = owner_map.get(ev['file_path'])
+        path = ev['file_path']
+        # Normalize container path to DB path style (remove /monitored prefix if exists)
+        if path.startswith('/monitored'):
+            normalized_path = path[10:] # len('/monitored') = 10
+        else:
+            normalized_path = path
+
+        creds = owner_map.get(normalized_path) or owner_map.get(path)
         if creds and creds.get('chat_id'):
             tok = creds['token'] or global_token
             key = (tok, creds['chat_id'])
