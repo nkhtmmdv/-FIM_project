@@ -172,5 +172,6 @@ def _send_to(token: str, chat: str, events: List[Dict[str, object]]) -> None:
             except requests.RequestException as e:
                 logging.error(f'[alerter] Telegram error attempt {attempt}: {e}')
                 if attempt == 3:
-                    raise
+                    logging.error(f'[alerter] All retries failed for chat={chat}, giving up.')
+                    return
                 time.sleep(2 ** attempt)
