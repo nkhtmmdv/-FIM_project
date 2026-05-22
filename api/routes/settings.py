@@ -76,7 +76,7 @@ def test_telegram(user=Depends(current_user)):
         r = req.post(url, json={'chat_id': chat, 'text': text}, timeout=10)
         r.raise_for_status()
         return {'ok': True}
-    except Exception as exc:
+    except req.RequestException as exc:
         return {'ok': False, 'error': str(exc)}
 
 

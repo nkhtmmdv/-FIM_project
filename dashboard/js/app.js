@@ -445,8 +445,11 @@ async function loadSettings() {
         if (cfg.smtp_user) document.getElementById('smtpUser').value = cfg.smtp_user;
         if (cfg.alert_email_to) document.getElementById('smtpTo').value = cfg.alert_email_to;
         if (cfg.scan_interval_seconds) {
-            document.getElementById('scanInterval').value = cfg.scan_interval_seconds;
-            document.getElementById('scanIntervalVal').textContent = cfg.scan_interval_seconds + 's';
+            var secs = parseInt(cfg.scan_interval_seconds, 10);
+            scanInterval = secs;
+            countdownValue = secs;
+            document.getElementById('scanInterval').value = secs;
+            document.getElementById('scanIntervalVal').textContent = secs + 's';
         }
         if (cfg.alert_on_permission_change === 'false') document.getElementById('togPerms').checked = false;
         if (cfg.alert_on_owner_change === 'false') document.getElementById('togOwner').checked = false;

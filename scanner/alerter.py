@@ -1,14 +1,18 @@
 """Alert delivery for Telegram and SMTP.
 
-Reads credentials from the PostgreSQL settings table first,
-falling back to environment variables if not found in the DB.
-This allows each deployment to configure alerts through the dashboard.
+Reads credentials from user profiles in PostgreSQL and dispatches
+alerts only to users who have configured their own Telegram bot.
 """
 from __future__ import annotations
-import os, smtplib, time
+import logging
+import os
+import smtplib
+import socket
+import time
 from datetime import datetime, timezone
 from email.message import EmailMessage
-from typing import Dict, List, Optional
+from typing import Dict, List
+
 import requests
 
 TELEGRAM_URL = 'https://api.telegram.org/bot{token}/sendMessage'
@@ -51,40 +55,12 @@ def format_alert(event: Dict[str, object], host: str) -> str:
     return "\n".join(lines)
 
 
-def send_telegram(events: List[Dict[str, object]]) -> None:
-    """Send batched Telegram alerts with exponential backoff."""
-    token = _cfg('telegram_bot_token', 'TELEGRAM_BOT_TOKEN')
-    chat = _cfg('telegram_chat_id', 'TELEGRAM_CHAT_ID')
-    if not token or not chat or not events:
-        return
-    host = socket.gethostname()
-    chunks = [
-        '\n\n'.join(format_alert(e, host) for e in events[i:i + 5])
-        for i in range(0, len(events), 5)
-    ]
-    for text in chunks:
-        for attempt in range(4):
-            try:
-                r = requests.post(
-                    TELEGRAM_URL.format(token=token),
-                    json={'chat_id': chat, 'text': text},
-                    timeout=10
-                )
-                r.raise_for_status()
-                break
-            except requests.RequestException:
-                if attempt == 3:
-                    raise
-                time.sleep(2 ** attempt)
-
-
 def send_email(events: List[Dict[str, object]]) -> None:
     """Send optional SMTP email alert."""
     smtp_host = _cfg('smtp_host', 'SMTP_HOST')
     target = _cfg('alert_email_to', 'ALERT_EMAIL_TO')
     if not smtp_host or not target or not events:
         return
-    import socket
     try:
         hostname = socket.gethostname()
     except Exception:
@@ -107,7 +83,6 @@ def dispatch(events: List[Dict[str, object]]) -> None:
     if not events:
         return
 
-    import logging
     sent = False
     try:
         import db as scanner_db
@@ -138,7 +113,6 @@ def dispatch(events: List[Dict[str, object]]) -> None:
 
 def _send_to(token: str, chat: str, events: List[Dict[str, object]]) -> None:
     """Send batched alerts to a single Telegram destination."""
-    import logging, socket
     if not token or not chat:
         logging.warning(f'[alerter] _send_to skipped: token={bool(token)} chat={bool(chat)}')
         return

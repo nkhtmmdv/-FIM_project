@@ -24,7 +24,11 @@ def scan_status(user=Depends(current_user)):
 @router.post('/scan/trigger')
 def trigger(user=Depends(current_user)):
     """Trigger manual scan."""
-    requests.post('http://scanner:9000/api/scan/trigger',timeout=5); return {'ok':True}
+    try:
+        requests.post('http://scanner:9000/api/scan/trigger', timeout=5)
+    except requests.RequestException:
+        pass
+    return {'ok': True}
 @router.get('/scan/history')
 def history(user=Depends(current_user)):
     """Return scan history."""

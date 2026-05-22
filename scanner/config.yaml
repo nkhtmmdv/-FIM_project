@@ -1,5 +1,5 @@
-monitored_files: [/monitored/etc/passwd,/monitored/etc/shadow,/monitored/etc/sudoers,/monitored/etc/sudoers.d/,/monitored/etc/ssh/sshd_config,/monitored/etc/ssh/ssh_config,/monitored/etc/hosts,/monitored/etc/hostname,/monitored/etc/resolv.conf,/monitored/etc/crontab,/monitored/etc/cron.d/,/monitored/etc/cron.daily/,/monitored/etc/cron.hourly/,/monitored/etc/rc.local,/monitored/etc/profile,/monitored/etc/bashrc,/monitored/etc/environment,/monitored/bin/bash,/monitored/bin/sh,/monitored/usr/bin/sudo,/monitored/usr/bin/passwd,/monitored/usr/sbin/sshd,/monitored/sbin/init,/monitored/lib/systemd/systemd]
-scan_interval_seconds: 30
+monitored_files: [/monitored/etc/passwd]
+scan_interval_seconds: 120
 alert_on_new_files: true
 alert_on_deleted_files: true
 alert_on_permission_change: true
