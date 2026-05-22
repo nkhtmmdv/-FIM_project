@@ -19,18 +19,5 @@ def recent(user=Depends(current_user)):
     return fetch_all('SELECT * FROM file_events ORDER BY detected_at DESC LIMIT 20')
 @router.put('/{alert_id}/acknowledge')
 def acknowledge(alert_id:int,request:Request,user=Depends(current_user)):
-    """Acknowledge an alert and advance the baseline for that file."""
-    ev=fetch_one('SELECT * FROM file_events WHERE id=%s',(alert_id,))
-    if not ev: return {'ok':False,'error':'not found'}
-    execute('UPDATE file_events SET acknowledged=TRUE,acknowledged_by=%s,acknowledged_at=NOW() WHERE id=%s',(user['username'],alert_id))
-    audit(user['username'],'alert.ack',str(alert_id),request.client.host if request.client else None)
-    # Also ack all open duplicates for the same file+state so scanner knows it's resolved
-    execute('UPDATE file_events SET acknowledged=TRUE,acknowledged_by=%s,acknowledged_at=NOW() WHERE file_path=%s AND hash_after=%s AND acknowledged=FALSE',(user['username'],ev['file_path'],ev['hash_after']))
-    # Advance baseline to acknowledged state so next scan does not re-flag this change
-    if ev['event_type']=='DELETED' or ev['hash_after']=='DELETED':
-        # File was deleted and accepted — remove from baseline entirely
-        execute('DELETE FROM baseline_hashes WHERE file_path=%s',(ev['file_path'],))
-    elif ev['hash_after'] and ev['hash_after'] not in ('UNREADABLE',):
-        execute('DELETE FROM baseline_hashes WHERE file_path=%s',(ev['file_path'],))
-        execute('INSERT INTO baseline_hashes(file_path,sha256_hash,file_size,permissions,owner_name,baseline_set_at) VALUES(%s,%s,%s,%s,%s,NOW())',(ev['file_path'],ev['hash_after'],ev.get('size_after'),ev.get('permissions_after'),ev.get('owner_after')))
-    return fetch_one('SELECT * FROM file_events WHERE id=%s',(alert_id,))
+    """Acknowledge an alert."""
+    execute('UPDATE file_events SET acknowledged=TRUE,acknowledged_by=%s,acknowledged_at=NOW() WHERE id=%s',(user['username'],alert_id)); audit(user['username'],'alert.ack',str(alert_id),request.client.host if request.client else None); return fetch_one('SELECT * FROM file_events WHERE id=%s',(alert_id,))

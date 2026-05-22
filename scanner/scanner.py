@@ -39,12 +39,9 @@ def compare(scan_id:int, snaps:Dict[str,Dict[str,object]], base:Dict[str,Dict[st
         elif kind=='PERMISSIONS_CHANGED': stats['permissions_changed']+=1
         elif kind=='OWNER_CHANGED': stats['owner_changed']+=1
         ev={'file_path':path,'event_type':kind,'severity':severity_for(path,sev),'hash_before':None if not b else b['sha256_hash'],'hash_after':s['sha256_hash'],'size_before':None if not b else b['file_size'],'size_after':s['file_size'],'permissions_before':None if not b else b['permissions'],'permissions_after':s['permissions'],'owner_before':None if not b else b['owner_name'],'owner_after':s['owner_name']}
-        # Skip if an identical unacknowledged event already exists — wait for user to ack first
-        if db.has_unacked_duplicate(path, s['sha256_hash'], scan_id): continue
         db.write_event(scan_id,ev); events.append(ev); LOGGER.warning('file_change', {'scan_id':scan_id,'file_path':path,'event_type':kind,'hash_before':ev['hash_before'],'hash_after':ev['hash_after']})
     for path,b in base.items():
         if path not in snaps and cfg.get('alert_on_deleted_files',True):
-            if db.has_unacked_duplicate(path,'DELETED',scan_id): continue
             ev={'file_path':path,'event_type':'DELETED','severity':severity_for(path,sev),'hash_before':b['sha256_hash'],'hash_after':'DELETED','size_before':b['file_size'],'size_after':None,'permissions_before':b['permissions'],'permissions_after':None,'owner_before':b['owner_name'],'owner_after':None}
             db.write_event(scan_id,ev); events.append(ev); stats['deleted']+=1
     return events,stats
@@ -60,8 +57,11 @@ def run_scan(triggered_by:str='scheduler', reset_baseline:bool=False)->int:
         db.finish_scan(scan_id,stats,'COMPLETE')
         alerts=[e for e in events if e['event_type']!='UNCHANGED']
         alerter.dispatch(alerts)
-        # Baseline is NOT auto-updated here — it advances only when the user acknowledges an alert.
-        # This ensures repeated scans keep flagging unacknowledged changes without Telegram spam.
+        # Auto-update baseline so next scan only alerts on NEW changes.
+        # DELETED files are kept with DELETED hash so they are not re-flagged every scan.
+        if alerts:
+            live_snaps=[s for s in snaps.values() if s['sha256_hash'] not in ('UNREADABLE',)]
+            db.replace_baseline(scan_id,live_snaps)
         return scan_id
     except Exception as exc:
         db.finish_scan(scan_id,{'duration_ms':int((time.time()-started)*1000)},'FAILED'); LOGGER.error(str(exc), {'scan_id':scan_id,'event_type':'SCAN_FAILED'}); raise
