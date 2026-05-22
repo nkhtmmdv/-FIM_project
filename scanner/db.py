@@ -47,18 +47,6 @@ def load_baseline()->Dict[str,Dict[str,object]]:
 def write_event(scan_id:int, ev:Dict[str,object])->None:
     """Persist a file event."""
     with conn_cursor() as cur: cur.execute('INSERT INTO file_events(scan_run_id,file_path,event_type,severity,hash_before,hash_after,size_before,size_after,permissions_before,permissions_after,owner_before,owner_after) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)',(scan_id,ev['file_path'],ev['event_type'],ev.get('severity'),ev.get('hash_before'),ev.get('hash_after'),ev.get('size_before'),ev.get('size_after'),ev.get('permissions_before'),ev.get('permissions_after'),ev.get('owner_before'),ev.get('owner_after')))
-def file_owner_telegram()->Dict[str,Dict[str,str]]:
-    """Return mapping of file_path -> {token, chat_id} for the user who added each file."""
-    with conn_cursor() as cur:
-        cur.execute(
-            'SELECT mf.file_path, u.telegram_bot_token, u.telegram_chat_id '
-            'FROM monitored_files mf '
-            'JOIN users u ON u.username = mf.added_by '
-            'WHERE mf.is_active = TRUE '
-            '  AND u.telegram_chat_id IS NOT NULL '
-            "  AND u.telegram_chat_id != ''"
-        )
-        return {r['file_path']: {'token': r['telegram_bot_token'] or '', 'chat_id': r['telegram_chat_id']} for r in cur.fetchall()}
 def get_scan_interval()->int:
     """Return scan interval seconds from DB settings, fallback to env."""
     try:
@@ -68,8 +56,3 @@ def get_scan_interval()->int:
             if row and row['value']: return max(10,int(row['value']))
     except Exception: pass
     return int(os.getenv('SCAN_INTERVAL_SECONDS','120'))
-def global_telegram()->Dict[str,str]:
-    """Return global fallback Telegram credentials from settings table."""
-    with conn_cursor() as cur:
-        cur.execute("SELECT key, value FROM settings WHERE key IN ('telegram_bot_token','telegram_chat_id')")
-        return {r['key']: r['value'] for r in cur.fetchall()}

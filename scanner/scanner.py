@@ -18,7 +18,7 @@ def severity_for(path:str, mapping:Dict[str,str])->str:
     return 'CRITICAL' if '/bin/' in path or '/sbin/' in path else best
 def compare(scan_id:int, snaps:Dict[str,Dict[str,object]], base:Dict[str,Dict[str,object]], sev:Dict[str,str], cfg:Dict[str,object])->Tuple[List[Dict[str,object]],Dict[str,int]]:
     """Compare snapshots to baseline and persist events."""
-    events=[]; stats={'scanned':len(snaps),'clean':0,'modified':0,'deleted':0,'added':0}
+    events=[]; stats={'scanned':len(snaps),'clean':0,'modified':0,'deleted':0,'added':0,'permissions_changed':0,'owner_changed':0}
     for path,s in snaps.items():
         b=base.get(path); kind='UNCHANGED'
         if not b: kind='ADDED'
@@ -32,6 +32,8 @@ def compare(scan_id:int, snaps:Dict[str,Dict[str,object]], base:Dict[str,Dict[st
         if kind=='MODIFIED': stats['modified']+=1
         elif kind=='DELETED': stats['deleted']+=1
         elif kind=='ADDED': stats['added']+=1
+        elif kind=='PERMISSIONS_CHANGED': stats['permissions_changed']+=1
+        elif kind=='OWNER_CHANGED': stats['owner_changed']+=1
         ev={'file_path':path,'event_type':kind,'severity':severity_for(path,sev),'hash_before':None if not b else b['sha256_hash'],'hash_after':s['sha256_hash'],'size_before':None if not b else b['file_size'],'size_after':s['file_size'],'permissions_before':None if not b else b['permissions'],'permissions_after':s['permissions'],'owner_before':None if not b else b['owner_name'],'owner_after':s['owner_name']}
         db.write_event(scan_id,ev); events.append(ev); LOGGER.warning('file_change', {'scan_id':scan_id,'file_path':path,'event_type':kind,'hash_before':ev['hash_before'],'hash_after':ev['hash_after']})
     for path,b in base.items():
