@@ -4,11 +4,8 @@ import os
 import requests as req
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 from auth import current_user, hash_password, verify_password
 from database import audit, execute, fetch_one
-limiter = Limiter(key_func=get_remote_address)
 
 router = APIRouter(tags=['profile'])
 
@@ -30,7 +27,6 @@ class ProfileUpdate(BaseModel):
 
 
 @router.post('/api/v1/auth/register')
-@limiter.limit('3/minute')
 def register(body: RegisterRequest, request: Request):
     """Register a new user account."""
     existing = fetch_one('SELECT id FROM users WHERE username=%s', (body.username,))

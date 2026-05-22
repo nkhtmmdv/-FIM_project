@@ -22,7 +22,7 @@ def startup()->None:
     """Initialise app dependencies."""
     validate_secrets(); init_pool()
 @app.post('/api/v1/auth/login')
-@limiter.limit('5/minute')
+@limiter.limit('20/minute')
 async def login(request:Request, body:LoginRequest):
     """Authenticate and return access plus refresh tokens."""
     row=fetch_one('SELECT * FROM users WHERE username=%s',(body.username,))
