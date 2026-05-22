@@ -1,6 +1,7 @@
 """File routes."""
 from __future__ import annotations
-from fastapi import APIRouter, Depends, Request, Query
+import os
+from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from auth import current_user
 from database import audit, execute, fetch_all, fetch_one
 from models.file_record import FileAdd
@@ -27,7 +28,11 @@ def file_detail(path:str,user=Depends(current_user)):
 @router.post('/add')
 def add_file(body:FileAdd,request:Request,user=Depends(current_user)):
     """Add a monitored file path."""
-    execute('INSERT INTO monitored_files(file_path,severity,added_by) VALUES(%s,%s,%s) ON CONFLICT(file_path) DO UPDATE SET is_active=TRUE,severity=EXCLUDED.severity',(body.file_path,body.severity,user['username'])); audit(user['username'],'file.add',body.file_path,request.client.host if request.client else None); return {'ok':True}
+    # Reject path traversal and relative paths
+    norm = os.path.normpath(body.file_path)
+    if '..' in norm.split(os.sep) or not norm.startswith('/'):
+        raise HTTPException(status_code=400, detail='invalid file path')
+    execute('INSERT INTO monitored_files(file_path,severity,added_by) VALUES(%s,%s,%s) ON CONFLICT(file_path) DO UPDATE SET is_active=TRUE,severity=EXCLUDED.severity',(norm,body.severity,user['username'])); audit(user['username'],'file.add',norm,request.client.host if request.client else None); return {'ok':True}
 @router.delete('/{path:path}')
 def remove_file(path:str,request:Request,user=Depends(current_user)):
     """Deactivate a monitored file path."""

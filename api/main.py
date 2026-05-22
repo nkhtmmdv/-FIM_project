@@ -7,6 +7,7 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 from slowapi.middleware import SlowAPIMiddleware
 from auth import create_token, current_user, validate_secrets, verify_password
+from jose import JWTError, jwt
 from database import fetch_one, execute, init_pool
 from models.alert import LoginRequest, TokenRefresh
 from routes import files, alerts, baseline, stats, settings, profile
@@ -21,7 +22,7 @@ def startup()->None:
     """Initialise app dependencies."""
     validate_secrets(); init_pool()
 @app.post('/api/v1/auth/login')
-@limiter.limit('100/minute')
+@limiter.limit('5/minute')
 async def login(request:Request, body:LoginRequest):
     """Authenticate and return access plus refresh tokens."""
     row=fetch_one('SELECT * FROM users WHERE username=%s',(body.username,))
@@ -37,7 +38,12 @@ def refresh(body:TokenRefresh):
     return {'access_token':create_token(payload['sub'],'access',int(os.getenv('ACCESS_TOKEN_EXPIRE_MINUTES','60')))}
 @app.websocket('/ws/live')
 async def live(ws:WebSocket):
-    """Accept live WebSocket clients."""
+    """Accept authenticated live WebSocket clients."""
+    token=ws.query_params.get('token','')
+    try:
+        payload=jwt.decode(token,os.getenv('JWT_SECRET',''),algorithms=['HS256'])
+        if payload.get('type')!='access': await ws.close(code=4001); return
+    except JWTError: await ws.close(code=4001); return
     await ws.accept(); sockets.add(ws)
     try:
         while True: await ws.receive_text()

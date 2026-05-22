@@ -17,7 +17,8 @@ const WS_MAX_RETRY = 30000;
 function connectWS() {
     const banner = document.getElementById('reconnect');
     const proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
-    const url = proto + location.host + '/ws/live';
+    const tok = localStorage.getItem('fimToken') || '';
+    const url = proto + location.host + '/ws/live?token=' + encodeURIComponent(tok);
 
     try {
         socket = new WebSocket(url);

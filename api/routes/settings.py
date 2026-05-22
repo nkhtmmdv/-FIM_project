@@ -36,11 +36,17 @@ class SettingsBatch(BaseModel):
     settings: list[SettingUpdate]
 
 
+_SECRET_KEYS = {'smtp_password'}
+
 @router.get('')
 def get_settings(user=Depends(current_user)):
-    """Return all settings as key-value pairs."""
+    """Return all settings as key-value pairs (sensitive values masked)."""
     rows = fetch_all('SELECT key, value FROM settings ORDER BY key')
-    return {r['key']: r['value'] for r in rows}
+    result = {}
+    for r in rows:
+        v = r['value'] or ''
+        result[r['key']] = ('***' if v else '') if r['key'] in _SECRET_KEYS else v
+    return result
 
 
 @router.put('')
@@ -48,6 +54,9 @@ def update_settings(body: SettingsBatch, request: Request, user=Depends(current_
     """Update one or more settings."""
     for item in body.settings:
         if item.key not in ALLOWED_KEYS:
+            continue
+        # Don't overwrite secrets if the masked placeholder was sent back
+        if item.key in _SECRET_KEYS and item.value == '***':
             continue
         execute(
             'INSERT INTO settings(key, value, updated_at) VALUES(%s, %s, NOW()) '
