@@ -47,6 +47,19 @@ def load_baseline()->Dict[str,Dict[str,object]]:
 def write_event(scan_id:int, ev:Dict[str,object])->None:
     """Persist a file event."""
     with conn_cursor() as cur: cur.execute('INSERT INTO file_events(scan_run_id,file_path,event_type,severity,hash_before,hash_after,size_before,size_after,permissions_before,permissions_after,owner_before,owner_after) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)',(scan_id,ev['file_path'],ev['event_type'],ev.get('severity'),ev.get('hash_before'),ev.get('hash_after'),ev.get('size_before'),ev.get('size_after'),ev.get('permissions_before'),ev.get('permissions_after'),ev.get('owner_before'),ev.get('owner_after')))
+def has_unacked_duplicate(file_path:str, hash_after:str, current_scan_id:int)->bool:
+    """Return True if an unacknowledged event for the same file+state already exists from a prior scan."""
+    try:
+        with conn_cursor() as cur:
+            cur.execute(
+                'SELECT 1 FROM file_events WHERE file_path=%s AND hash_after=%s '
+                'AND acknowledged=FALSE AND scan_run_id!=%s LIMIT 1',
+                (file_path, hash_after, current_scan_id)
+            )
+            return cur.fetchone() is not None
+    except Exception:
+        return False
+
 def get_scan_interval()->int:
     """Return scan interval seconds from DB settings, fallback to env."""
     try:
