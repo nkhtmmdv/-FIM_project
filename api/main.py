@@ -3,16 +3,13 @@ import os, signal, time
 from typing import Set
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from slowapi import Limiter
-from slowapi.util import get_remote_address
-from slowapi.middleware import SlowAPIMiddleware
 from auth import create_token, current_user, validate_secrets, verify_password
 from jose import JWTError, jwt
 from database import fetch_one, execute, init_pool
 from models.alert import LoginRequest, TokenRefresh
 from routes import files, alerts, baseline, stats, settings, profile
-APP_VERSION='1.0.0'; sockets:Set[WebSocket]=set(); limiter=Limiter(key_func=get_remote_address)
-app=FastAPI(title='FIM API',version=APP_VERSION); app.state.limiter=limiter; app.add_middleware(SlowAPIMiddleware); app.add_middleware(CORSMiddleware,allow_origins=os.getenv('CORS_ORIGINS','*').split(','),allow_credentials=True,allow_methods=['*'],allow_headers=['*'])
+APP_VERSION='1.0.0'; sockets:Set[WebSocket]=set()
+app=FastAPI(title='FIM API',version=APP_VERSION); app.add_middleware(CORSMiddleware,allow_origins=os.getenv('CORS_ORIGINS','*').split(','),allow_credentials=True,allow_methods=['*'],allow_headers=['*'])
 @app.middleware('http')
 async def security_and_logging(request:Request, call_next):
     """Add security headers and request timing."""
@@ -22,7 +19,6 @@ def startup()->None:
     """Initialise app dependencies."""
     validate_secrets(); init_pool()
 @app.post('/api/v1/auth/login')
-@limiter.limit('20/minute')
 async def login(request:Request, body:LoginRequest):
     """Authenticate and return access plus refresh tokens."""
     row=fetch_one('SELECT * FROM users WHERE username=%s',(body.username,))
