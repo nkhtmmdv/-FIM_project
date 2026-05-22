@@ -47,6 +47,21 @@ def load_baseline()->Dict[str,Dict[str,object]]:
 def write_event(scan_id:int, ev:Dict[str,object])->None:
     """Persist a file event."""
     with conn_cursor() as cur: cur.execute('INSERT INTO file_events(scan_run_id,file_path,event_type,severity,hash_before,hash_after,size_before,size_after,permissions_before,permissions_after,owner_before,owner_after) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)',(scan_id,ev['file_path'],ev['event_type'],ev.get('severity'),ev.get('hash_before'),ev.get('hash_after'),ev.get('size_before'),ev.get('size_after'),ev.get('permissions_before'),ev.get('permissions_after'),ev.get('owner_before'),ev.get('owner_after')))
+def get_unacked_open_changes(current_scan_id:int)->List[Dict[str,object]]:
+    """Return latest unacknowledged event per file that is NOT in current scan (for repeat Telegram)."""
+    try:
+        with conn_cursor() as cur:
+            cur.execute(
+                'SELECT DISTINCT ON (file_path) file_path,event_type,severity,hash_before,hash_after,'
+                'size_before,size_after,permissions_before,permissions_after,owner_before,owner_after '
+                'FROM file_events WHERE acknowledged=FALSE AND scan_run_id!=%s '
+                'ORDER BY file_path,detected_at DESC',
+                (current_scan_id,)
+            )
+            return [dict(r) for r in cur.fetchall()]
+    except Exception:
+        return []
+
 def has_unacked_duplicate(file_path:str, hash_after:str, current_scan_id:int)->bool:
     """Return True if an unacknowledged event for the same file+state already exists from a prior scan."""
     try:
