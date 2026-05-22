@@ -217,20 +217,33 @@ async function loadLastScan() {
    ========================================================= */
 
 /**
+ * Update the SVG ring to reflect remaining time.
+ * @param {number} remaining - Seconds remaining
+ */
+function updateRing(remaining) {
+    var circle = document.getElementById('progressCircle');
+    if (!circle) return;
+    var pct = Math.max(0, Math.min(1, remaining / scanInterval));
+    circle.setAttribute('stroke-dashoffset', (251.3 * (1 - pct)).toFixed(1));
+    var el = document.getElementById('nextScanCountdown');
+    if (el) el.textContent = 'Next scan in ' + Math.max(0, remaining) + 's';
+}
+
+/**
  * Start or restart the next-scan countdown ring.
+ * At 0 automatically fires triggerScan().
  */
 function startCountdown() {
-    countdownValue = scanInterval;
     if (countdownTimer) clearInterval(countdownTimer);
+    countdownValue = scanInterval;
+    updateRing(countdownValue);
     countdownTimer = setInterval(function () {
         countdownValue--;
-        if (countdownValue <= 0) { countdownValue = scanInterval; }
-        var el = document.getElementById('nextScanCountdown');
-        if (el) el.textContent = 'Next scan in ' + countdownValue + 's';
-        var circle = document.getElementById('progressCircle');
-        if (circle) {
-            var pct = countdownValue / scanInterval;
-            circle.setAttribute('stroke-dashoffset', (251.3 * (1 - pct)).toFixed(1));
+        updateRing(countdownValue);
+        if (countdownValue <= 0) {
+            clearInterval(countdownTimer);
+            countdownTimer = null;
+            triggerScan();
         }
     }, 1000);
 }
@@ -519,12 +532,18 @@ async function triggerScan() {
     var lastScanEl = document.getElementById('lastScan');
     if (stateEl) stateEl.textContent = 'Scanning...';
 
+    // Reset ring immediately so user sees feedback
+    if (countdownTimer) clearInterval(countdownTimer);
+    countdownTimer = null;
+    updateRing(0);
+    var cdEl = document.getElementById('nextScanCountdown');
+    if (cdEl) cdEl.textContent = 'Scanning...';
+
     // Snapshot current scan ID before triggering
     var before = await api('/scan/status');
     var beforeId = before ? (before.id || 0) : 0;
 
     await api('/scan/trigger', { method: 'POST' });
-    countdownValue = scanInterval;
 
     // Poll until a NEW scan (id > beforeId) that is no longer RUNNING
     var t0 = Date.now();
@@ -546,6 +565,9 @@ async function triggerScan() {
         if (stateEl) stateEl.textContent = 'Done (' + elapsed + 's)';
     }
     if (currentPage === 'dashboard') loadDashboard();
+
+    // Restart countdown ring after scan completes
+    startCountdown();
 }
 
 /**
