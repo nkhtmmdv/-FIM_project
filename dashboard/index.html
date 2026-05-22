@@ -219,7 +219,7 @@
           <div class="setting-row">
             <span>Scan Interval</span>
             <div class="row gap-sm">
-              <input type="range" id="scanInterval" min="10" max="300" value="30" style="width:140px">
+              <input type="range" id="scanInterval" min="10" max="300" value="30" style="width:140px" oninput="document.getElementById('scanIntervalVal').textContent=this.value+'s'">
               <span id="scanIntervalVal">30s</span>
             </div>
           </div>

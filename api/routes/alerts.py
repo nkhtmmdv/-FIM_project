@@ -5,12 +5,13 @@ from auth import current_user
 from database import audit, execute, fetch_all, fetch_one
 router=APIRouter(prefix='/alerts',tags=['alerts'])
 @router.get('')
-def alerts(user=Depends(current_user),severity:str|None=None,event_type:str|None=None,path:str|None=None,limit:int=Query(50,le=500),offset:int=0):
+def alerts(user=Depends(current_user),severity:str|None=None,event_type:str|None=None,path:str|None=None,scan_run_id:int|None=None,limit:int=Query(50,le=500),offset:int=0):
     """List alerts."""
     where=['TRUE']; params=[]
     if severity: where.append('severity=%s'); params.append(severity)
     if event_type: where.append('event_type=%s'); params.append(event_type)
     if path: where.append('file_path ILIKE %s'); params.append(f'%{path}%')
+    if scan_run_id: where.append('scan_run_id=%s'); params.append(scan_run_id)
     params.extend([limit,offset]); sql='SELECT * FROM file_events WHERE '+ ' AND '.join(where)+' ORDER BY detected_at DESC LIMIT %s OFFSET %s'; return fetch_all(sql,params)
 @router.get('/recent')
 def recent(user=Depends(current_user)):

@@ -25,7 +25,7 @@ function sleep(ms) { return new Promise(function(r) { setTimeout(r, ms); }); }
    ========================================================= */
 
 /**
- * Authenticated fetch wrapper. Redirects to login on 401.
+ * Authenticated fetch wrapper. Auto-refreshes JWT on 401, redirects to login if refresh fails.
  * @param {string} path - API path after /api/v1
  * @param {object} opts - Fetch options
  * @returns {Promise<any>}
@@ -42,10 +42,38 @@ async function api(path, opts) {
     opts.headers = headers;
     var r = await fetch(API + path, opts);
     if (r.status === 401) {
-        showPage('login');
-        return null;
+        // Try to refresh the access token once
+        var refreshed = await _tryRefresh();
+        if (!refreshed) { showPage('login'); return null; }
+        opts.headers['Authorization'] = 'Bearer ' + token;
+        r = await fetch(API + path, opts);
+        if (r.status === 401) { showPage('login'); return null; }
     }
     return r.json();
+}
+
+/**
+ * Attempt to refresh the access token using the stored refresh token.
+ * @returns {Promise<boolean>} true if refresh succeeded
+ */
+async function _tryRefresh() {
+    var rt = localStorage.getItem('fimRefresh');
+    if (!rt) return false;
+    try {
+        var r = await fetch(API + '/auth/refresh', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refresh_token: rt })
+        });
+        if (!r.ok) return false;
+        var data = await r.json();
+        if (data && data.access_token) {
+            token = data.access_token;
+            localStorage.setItem('fimToken', token);
+            return true;
+        }
+    } catch (e) {}
+    return false;
 }
 
 /* =========================================================
@@ -180,6 +208,9 @@ async function loadFilesTable() {
             '<td style="font-family:JetBrains Mono,monospace;font-size:11px">' + esc((f.hash_after || '').substring(0, 12)) + '</td>' +
             '<td><button class="btn sm">View</button></td></tr>';
     }).join('');
+    renderPagination('filesPagination', filesPageOffset, files.length, function (o) {
+        filesPageOffset = o; loadFilesTable();
+    });
 }
 
 /**
@@ -342,6 +373,9 @@ async function loadAlerts() {
             '<td>' + (a.acknowledged ? '<span class="badge INFO">Acked</span>' :
                 '<button class="btn sm" onclick="ackAlert(' + a.id + ')">Ack</button>') + '</td></tr>';
     }).join('');
+    renderPagination('alertsPagination', alertsPageOffset, data.length, function (o) {
+        alertsPageOffset = o; loadAlerts();
+    });
 }
 
 /**
@@ -403,16 +437,15 @@ async function loadHistory() {
 async function loadScanDetail(scanId) {
     document.getElementById('scanDetail').style.display = '';
     document.getElementById('scanDetailId').textContent = scanId;
-    var events = await api('/alerts?limit=200&offset=0');
+    var events = await api('/alerts?limit=500&offset=0&scan_run_id=' + scanId);
     if (!events) return;
-    var filtered = events.filter(function (e) { return e.scan_run_id === scanId; });
     var body = document.getElementById('scanDetailBody');
-    body.innerHTML = filtered.map(function (e) {
+    body.innerHTML = events.map(function (e) {
         return '<tr><td>' + esc(e.file_path) + '</td>' +
             '<td><span class="badge ' + e.event_type + '">' + e.event_type + '</span></td>' +
             '<td><span class="badge ' + (e.severity || '') + '">' + (e.severity || '') + '</span></td></tr>';
     }).join('');
-    if (!filtered.length) body.innerHTML = '<tr><td colspan="3" style="color:var(--muted)">No changes in this scan</td></tr>';
+    if (!events.length) body.innerHTML = '<tr><td colspan="3" style="color:var(--muted)">No changes in this scan</td></tr>';
 }
 
 /* =========================================================
@@ -872,6 +905,30 @@ async function saveToggles() {
     scanInterval = Math.max(10, newInterval);
     startCountdown();
     showToast('Scan settings saved — interval updated to ' + scanInterval + 's', 'success');
+}
+
+/* =========================================================
+   Pagination Helper
+   ========================================================= */
+
+/**
+ * Render prev/next pagination controls into a container element.
+ * @param {string} containerId - ID of the pagination div
+ * @param {number} offset - Current offset
+ * @param {number} count - Number of rows returned
+ * @param {function} onChange - Callback(newOffset)
+ */
+function renderPagination(containerId, offset, count, onChange) {
+    var el = document.getElementById(containerId);
+    if (!el) return;
+    var page = Math.floor(offset / PAGE_SIZE) + 1;
+    var hasPrev = offset > 0;
+    var hasNext = count === PAGE_SIZE;
+    if (!hasPrev && !hasNext) { el.innerHTML = ''; return; }
+    el.innerHTML =
+        (hasPrev ? '<button class="btn sm" onclick="(' + onChange.toString() + ')(' + (offset - PAGE_SIZE) + ')">&#8592; Prev</button>' : '') +
+        '<span style="margin:0 12px;color:var(--muted);font-size:13px">Page ' + page + '</span>' +
+        (hasNext ? '<button class="btn sm" onclick="(' + onChange.toString() + ')(' + (offset + PAGE_SIZE) + ')">Next &#8594;</button>' : '');
 }
 
 /* =========================================================
