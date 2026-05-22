@@ -33,6 +33,8 @@ def _signal(signum:int, frame:object)->None:
 def serve()->None:
     """Run internal HTTP server."""
     ThreadingHTTPServer(('0.0.0.0',9000),Handler).serve_forever()
+_TICK = 5  # seconds between interval-change checks
+
 def main()->None:
     """Run scanner forever until SIGTERM."""
     global LAST_SCAN_ID
@@ -41,5 +43,14 @@ def main()->None:
         interval = _db.get_scan_interval()
         try: LAST_SCAN_ID = scanner.run_scan('scheduler')
         except Exception: pass
-        STOP.wait(interval)
+        # Wait for the interval but re-check DB every _TICK seconds.
+        # If the configured interval changes, break early so the next
+        # iteration starts with the new value immediately.
+        waited = 0
+        while not STOP.is_set() and waited < interval:
+            STOP.wait(_TICK)
+            waited += _TICK
+            new_interval = _db.get_scan_interval()
+            if new_interval != interval:
+                break
 if __name__=='__main__': main()
