@@ -21,8 +21,12 @@ def compare(scan_id:int, snaps:Dict[str,Dict[str,object]], base:Dict[str,Dict[st
     events=[]; stats={'scanned':len(snaps),'clean':0,'modified':0,'deleted':0,'added':0,'permissions_changed':0,'owner_changed':0}
     for path,s in snaps.items():
         b=base.get(path); kind='UNCHANGED'
-        if not b: kind='ADDED'
-        elif s['sha256_hash']=='DELETED': kind='DELETED'
+        if not b:
+            if s['sha256_hash'] in ('DELETED','UNREADABLE'): continue  # already known absent, skip
+            kind='ADDED'
+        elif s['sha256_hash']=='DELETED':
+            if (b or {}).get('sha256_hash')=='DELETED': continue  # still deleted, no change
+            kind='DELETED'
         elif s['sha256_hash']!=b['sha256_hash']: kind='MODIFIED'
         elif cfg.get('alert_on_permission_change',True) and s['permissions']!=b['permissions']: kind='PERMISSIONS_CHANGED'
         elif cfg.get('alert_on_owner_change',True) and (s['owner_uid']!=b['owner_uid'] or s['owner_gid']!=b['owner_gid']): kind='OWNER_CHANGED'
@@ -56,7 +60,8 @@ def run_scan(triggered_by:str='scheduler', reset_baseline:bool=False)->int:
         # Update baseline to current state so next scan only alerts on NEW changes
         # Exclude DELETED/UNREADABLE files so they don't repeat-alert every scan
         if alerts:
-            live_snaps=[s for s in snaps.values() if s['sha256_hash'] not in ('DELETED','UNREADABLE')]
+            # Keep DELETED snapshots in baseline so future scans recognise them as already-known-absent
+            live_snaps=[s for s in snaps.values() if s['sha256_hash'] not in ('UNREADABLE',)]
             db.replace_baseline(scan_id,live_snaps)
         return scan_id
     except Exception as exc:
