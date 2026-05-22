@@ -55,12 +55,13 @@ def run_scan(triggered_by:str='scheduler', reset_baseline:bool=False)->int:
         events,stats=compare(scan_id,snaps,db.load_baseline(),db.severities(),cfg)
         stats['duration_ms']=int((time.time()-started)*1000)
         db.finish_scan(scan_id,stats,'COMPLETE')
-        new_alerts=[e for e in events if e['event_type']!='UNCHANGED']
-        # Also re-alert for files that still have open unacknowledged events from prior scans
-        repeat_alerts=db.get_unacked_open_changes(scan_id)
-        all_alerts=new_alerts+[r for r in repeat_alerts if not any(e['file_path']==r['file_path'] for e in new_alerts)]
-        alerter.dispatch(all_alerts)
-        # Baseline is NOT auto-updated — it advances only when user acknowledges.
+        alerts=[e for e in events if e['event_type']!='UNCHANGED']
+        alerter.dispatch(alerts)
+        # Auto-update baseline so next scan only alerts on NEW changes.
+        # DELETED files kept with DELETED hash so they are not re-flagged.
+        if alerts:
+            live_snaps=[s for s in snaps.values() if s['sha256_hash'] not in ('UNREADABLE',)]
+            db.replace_baseline(scan_id,live_snaps)
         return scan_id
     except Exception as exc:
         db.finish_scan(scan_id,{'duration_ms':int((time.time()-started)*1000)},'FAILED'); LOGGER.error(str(exc), {'scan_id':scan_id,'event_type':'SCAN_FAILED'}); raise
