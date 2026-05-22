@@ -39,11 +39,14 @@ def compare(scan_id:int, snaps:Dict[str,Dict[str,object]], base:Dict[str,Dict[st
         elif kind=='PERMISSIONS_CHANGED': stats['permissions_changed']+=1
         elif kind=='OWNER_CHANGED': stats['owner_changed']+=1
         ev={'file_path':path,'event_type':kind,'severity':severity_for(path,sev),'hash_before':None if not b else b['sha256_hash'],'hash_after':s['sha256_hash'],'size_before':None if not b else b['file_size'],'size_after':s['file_size'],'permissions_before':None if not b else b['permissions'],'permissions_after':s['permissions'],'owner_before':None if not b else b['owner_name'],'owner_after':s['owner_name']}
-        db.write_event(scan_id,ev); events.append(ev); LOGGER.warning('file_change', {'scan_id':scan_id,'file_path':path,'event_type':kind,'hash_before':ev['hash_before'],'hash_after':ev['hash_after']})
+        if not db.has_unacked_duplicate(path,s['sha256_hash'],scan_id):
+            db.write_event(scan_id,ev); LOGGER.warning('file_change',{'scan_id':scan_id,'file_path':path,'event_type':kind,'hash_before':ev['hash_before'],'hash_after':ev['hash_after']})
+        events.append(ev)
     for path,b in base.items():
         if path not in snaps and cfg.get('alert_on_deleted_files',True):
             ev={'file_path':path,'event_type':'DELETED','severity':severity_for(path,sev),'hash_before':b['sha256_hash'],'hash_after':'DELETED','size_before':b['file_size'],'size_after':None,'permissions_before':b['permissions'],'permissions_after':None,'owner_before':b['owner_name'],'owner_after':None}
-            db.write_event(scan_id,ev); events.append(ev); stats['deleted']+=1
+            if not db.has_unacked_duplicate(path,'DELETED',scan_id): db.write_event(scan_id,ev)
+            events.append(ev); stats['deleted']+=1
     return events,stats
 def run_scan(triggered_by:str='scheduler', reset_baseline:bool=False)->int:
     """Execute one scan and optionally replace baseline."""
@@ -56,12 +59,11 @@ def run_scan(triggered_by:str='scheduler', reset_baseline:bool=False)->int:
         stats['duration_ms']=int((time.time()-started)*1000)
         db.finish_scan(scan_id,stats,'COMPLETE')
         alerts=[e for e in events if e['event_type']!='UNCHANGED']
+        # Re-alert for files that have unacknowledged open events from prior scans
+        for r in db.get_unacked_open_changes(scan_id):
+            if not any(e['file_path']==r['file_path'] for e in alerts): alerts.append(r)
         alerter.dispatch(alerts)
-        # Auto-update baseline so next scan only alerts on NEW changes.
-        # DELETED files kept with DELETED hash so they are not re-flagged.
-        if alerts:
-            live_snaps=[s for s in snaps.values() if s['sha256_hash'] not in ('UNREADABLE',)]
-            db.replace_baseline(scan_id,live_snaps)
+        # Baseline advances only when user acknowledges — no auto-update here.
         return scan_id
     except Exception as exc:
         db.finish_scan(scan_id,{'duration_ms':int((time.time()-started)*1000)},'FAILED'); LOGGER.error(str(exc), {'scan_id':scan_id,'event_type':'SCAN_FAILED'}); raise
