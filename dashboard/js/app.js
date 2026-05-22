@@ -203,12 +203,18 @@ async function loadFeed() {
 
 /**
  * Load the last scan time and start the countdown timer.
+ * Fetches the real interval from settings before starting.
  */
 async function loadLastScan() {
     var scan = await api('/scan/status');
     if (!scan) return;
     document.getElementById('lastScan').textContent = fmtTime(scan.completed_at || scan.started_at);
     document.getElementById('scanState').textContent = scan.status === 'RUNNING' ? 'Scanning...' : 'Live';
+    // Sync interval from DB so ring uses the correct period
+    var cfg = await api('/settings');
+    if (cfg && cfg.scan_interval_seconds) {
+        scanInterval = Math.max(10, parseInt(cfg.scan_interval_seconds, 10) || 30);
+    }
     startCountdown();
 }
 
@@ -841,14 +847,18 @@ async function testEmail() {
  * Save scan toggle settings to DB.
  */
 async function saveToggles() {
+    var newInterval = parseInt(document.getElementById('scanInterval').value, 10) || 30;
     await saveSettings([
         { key: 'alert_on_permission_change', value: String(document.getElementById('togPerms').checked) },
         { key: 'alert_on_owner_change',      value: String(document.getElementById('togOwner').checked) },
         { key: 'alert_on_new_files',         value: String(document.getElementById('togNew').checked) },
         { key: 'alert_on_deleted_files',     value: String(document.getElementById('togDel').checked) },
-        { key: 'scan_interval_seconds',      value: document.getElementById('scanInterval').value }
+        { key: 'scan_interval_seconds',      value: String(newInterval) }
     ]);
-    showToast('Scan settings saved', 'success');
+    // Apply new interval to live countdown immediately
+    scanInterval = Math.max(10, newInterval);
+    startCountdown();
+    showToast('Scan settings saved — interval updated to ' + scanInterval + 's', 'success');
 }
 
 /* =========================================================
