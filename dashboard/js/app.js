@@ -14,6 +14,7 @@ let countdownTimer = null;
 let countdownValue = 30;
 let alertsPageOffset = 0;
 let filesPageOffset = 0;
+let tokenIsSet = false;   // true when a Telegram token is already saved in DB
 const PAGE_SIZE = 50;
 
 /** Promise-based sleep. */
@@ -448,12 +449,8 @@ async function loadSettings() {
     if (prof.ok) {
         var p = await prof.json();
         if (p.telegram_chat_id) document.getElementById('tgChat').value = p.telegram_chat_id;
-        // Never pre-fill token with masked value — leave blank, show placeholder
-        var tgInput = document.getElementById('tgToken');
-        tgInput.value = '';
-        tgInput.placeholder = p.telegram_bot_token_set
-            ? 'Token saved — enter new to replace'
-            : 'Your Bot Token (from @BotFather)';
+        tokenIsSet = !!p.telegram_bot_token_set;
+        _updateTokenIndicator(tokenIsSet);
     }
 
     // Load global/SMTP settings from DB
@@ -767,6 +764,21 @@ function closeModal() {
    ========================================================= */
 
 /**
+ * Update the token saved indicator label next to the token input.
+ * @param {boolean} isSet
+ */
+function _updateTokenIndicator(isSet) {
+    var tgInput = document.getElementById('tgToken');
+    if (!tgInput) return;
+    tgInput.value = '';
+    tgInput.placeholder = isSet
+        ? '✓ Token saved — leave blank to keep, or enter new to replace'
+        : 'Your Bot Token (from @BotFather)';
+    var ind = document.getElementById('tgTokenIndicator');
+    if (ind) ind.textContent = isSet ? '✓ Token saved' : '';
+}
+
+/**
  * Save personal profile (Telegram + optional password change).
  */
 async function saveProfile() {
@@ -790,6 +802,8 @@ async function saveProfile() {
         showToast('Profile saved!', 'success');
         document.getElementById('profCurPass').value = '';
         document.getElementById('profNewPass').value = '';
+        if (tgToken) { tokenIsSet = true; }
+        _updateTokenIndicator(tokenIsSet);
     } else {
         showToast('Error: ' + (data.detail || 'unknown'), 'error');
     }
@@ -802,13 +816,14 @@ async function testTelegramPersonal() {
     var tgToken = document.getElementById('tgToken').value.trim();
     var tgChat  = document.getElementById('tgChat').value.trim();
     if (!tgChat) { showToast('Enter your Chat ID first', 'warning'); return; }
-    if (!tgToken) {
-        showToast('\u26a0\ufe0f Enter your Bot Token first, then click Save Profile, then Test', 'warning');
+    // Block only if no token in field AND none saved in DB yet
+    if (!tgToken && !tokenIsSet) {
+        showToast('\u26a0\ufe0f Enter your Bot Token first', 'warning');
         document.getElementById('tgToken').focus();
         return;
     }
-    // Save new token then test
-    await saveProfile();
+    // If a new token was typed save it first; otherwise use the existing DB token
+    if (tgToken) { await saveProfile(); }
     var res = await fetch(API + '/auth/test-telegram', {
         method: 'POST',
         headers: { 'Authorization': 'Bearer ' + token }
@@ -816,10 +831,8 @@ async function testTelegramPersonal() {
     var data = await res.json();
     if (data && data.ok) {
         showToast('\u2705 Test message sent to your Telegram!', 'success');
-        // Refresh placeholder to reflect saved state
-        var tgInput = document.getElementById('tgToken');
-        tgInput.value = '';
-        tgInput.placeholder = 'Token saved \u2014 enter new to replace';
+        tokenIsSet = true;
+        _updateTokenIndicator(true);
     } else {
         var err = data && data.error ? data.error : 'unknown';
         if (err.indexOf('401') !== -1 || err.indexOf('Unauthorized') !== -1) {
