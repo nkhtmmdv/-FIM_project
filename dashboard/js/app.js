@@ -518,25 +518,25 @@ async function triggerScan() {
     var stateEl = document.getElementById('scanState');
     var lastScanEl = document.getElementById('lastScan');
     if (stateEl) stateEl.textContent = 'Scanning...';
-    var t0 = Date.now();
+
+    // Snapshot current scan ID before triggering
+    var before = await api('/scan/status');
+    var beforeId = before ? (before.id || 0) : 0;
+
     await api('/scan/trigger', { method: 'POST' });
     countdownValue = scanInterval;
-    // Wait for the new scan to appear then wait for it to finish
-    var triggeredId = null;
-    for (var i = 0; i < 40; i++) {
+
+    // Poll until a NEW scan (id > beforeId) that is no longer RUNNING
+    var t0 = Date.now();
+    var scan = null;
+    for (var i = 0; i < 30; i++) {
         await sleep(1000);
-        var scan = await api('/scan/status');
-        if (!scan) break;
-        if (triggeredId === null) {
-            // Wait for a RUNNING scan to appear
-            if (scan.status === 'RUNNING') { triggeredId = scan.id; }
-        } else {
-            // Wait for the scan we triggered to finish
-            if (scan.id === triggeredId && scan.status !== 'RUNNING') break;
-        }
+        var s = await api('/scan/status');
+        if (s && s.id > beforeId && s.status !== 'RUNNING') { scan = s; break; }
     }
+
     var elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-    var scan = await api('/scan/status');
+    if (!scan) scan = await api('/scan/status');
     var changes = 0;
     if (scan) {
         changes = (scan.files_modified || 0) + (scan.files_deleted || 0) + (scan.files_added || 0);
