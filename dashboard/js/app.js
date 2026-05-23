@@ -794,23 +794,24 @@ function logout() {
  */
 function showToast(msg, type) {
     type = type || 'success';
+    var borderColor = type === 'error' ? '#ef4444' : type === 'warning' ? '#eab308' : '#22c55e';
     var el = document.createElement('div');
-    var colors = { success: 'var(--green)', error: 'var(--red)', warning: 'var(--yellow)' };
     el.style.cssText = [
-        'position:fixed', 'bottom:24px', 'right:24px', 'z-index:999',
-        'background:var(--panel-solid)', 'color:var(--text-bright)',
-        'border:1px solid ' + (colors[type] || colors.success),
-        'border-radius:10px', 'padding:14px 20px', 'font-size:13px',
-        'box-shadow:0 8px 32px rgba(0,0,0,.4)',
-        'animation:fadeIn .2s ease', 'max-width:340px'
+        'position:fixed', 'bottom:28px', 'right:28px', 'z-index:9999',
+        'background:#18181b', 'color:#fafafa',
+        'border:1px solid ' + borderColor,
+        'border-radius:12px', 'padding:14px 20px', 'font-size:13px',
+        'font-family:Inter,system-ui,sans-serif',
+        'box-shadow:0 8px 32px rgba(0,0,0,.55)',
+        'max-width:360px', 'line-height:1.5',
+        'opacity:1', 'transition:opacity .3s'
     ].join(';');
     el.textContent = msg;
     document.body.appendChild(el);
     setTimeout(function () {
         el.style.opacity = '0';
-        el.style.transition = 'opacity .3s';
-        setTimeout(function () { el.remove(); }, 300);
-    }, 3200);
+        setTimeout(function () { if (el.parentNode) el.remove(); }, 320);
+    }, 3500);
 }
 
 /* =========================================================
