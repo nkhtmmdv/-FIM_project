@@ -224,7 +224,7 @@ async function loadFeed() {
     var alerts = await api('/alerts/recent');
     if (!alerts) return;
     var feed = document.getElementById('feed');
-    if (!alerts.length) { feed.innerHTML = '<p style="color:var(--muted)">No recent alerts</p>'; return; }
+    if (!alerts.length) { feed.innerHTML = '<div class="empty-state"><b>All quiet</b><span>No recent integrity alerts.</span></div>'; return; }
     feed.innerHTML = alerts.map(function (a) {
         return '<div class="alert-card">' +
             '<b>' + esc(a.event_type) + '</b>' +
@@ -449,7 +449,7 @@ async function loadScanDetail(scanId) {
             '<td><span class="badge ' + e.event_type + '">' + e.event_type + '</span></td>' +
             '<td><span class="badge ' + (e.severity || '') + '">' + (e.severity || '') + '</span></td></tr>';
     }).join('');
-    if (!events.length) body.innerHTML = '<tr><td colspan="3" style="color:var(--muted)">No changes in this scan</td></tr>';
+    if (!events.length) body.innerHTML = '<tr><td colspan="3"><div class="empty-state compact"><b>No changes</b><span>This scan completed cleanly.</span></div></td></tr>';
 }
 
 /* =========================================================
