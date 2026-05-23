@@ -476,7 +476,8 @@ async function loadSettings() {
                 var toggleBtn = isActive
                     ? '<button class="btn sm" title="Disable monitoring" onclick="disableFile(\'' + enc + '\')" style="color:#f59e0b;border-color:rgba(245,158,11,.25)">Pause</button>'
                     : '<button class="btn sm" title="Enable monitoring" onclick="enableFile(\'' + enc + '\')" style="color:#4ade80;border-color:rgba(74,222,128,.25)">Resume</button>';
-                var deleteBtn = '<button class="btn sm danger" title="Permanently remove from monitoring" onclick="purgeFile(\'' + enc + '\')" style="margin-left:4px">Delete</button>';
+                var safePath = f.file_path.replace(/'/g, "\\'");
+                var deleteBtn = '<button class="btn sm danger" title="Permanently remove from monitoring" onclick="purgeFile(\'' + safePath + '\')" style="margin-left:4px">Delete</button>';
                 return '<tr style="opacity:' + (isActive ? '1' : '0.6') + '">' +
                     '<td style="font-family:monospace;font-size:12px;word-break:break-all">' + dot + esc(f.file_path) + '</td>' +
                     '<td><span class="badge ' + (f.severity || 'INFO') + '">' + (f.severity || 'INFO') + '</span></td>' +
@@ -566,19 +567,20 @@ async function enableFile(encodedPath) {
     loadSettings();
 }
 
-async function purgeFile(encodedPath) {
+async function purgeFile(filePath) {
     if (!confirm('Permanently delete this file from monitoring?\nAll history and baseline data will be removed.')) return;
     try {
-        var r = await fetch(API + '/files/purge/' + encodedPath, {
+        var r = await fetch(API + '/files/purge', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+            body: JSON.stringify({ file_path: filePath })
         });
         if (r.ok) {
             showToast('File permanently removed', 'success');
         } else {
-            var body = null;
-            try { body = await r.json(); } catch(e) {}
-            showToast('Error ' + r.status + ': ' + (body && body.detail ? body.detail : 'failed'), 'error');
+            var data = null;
+            try { data = await r.json(); } catch(e) {}
+            showToast('Error ' + r.status + ': ' + (data && data.detail ? data.detail : 'failed'), 'error');
         }
     } catch (e) {
         showToast('Request failed: ' + e.message, 'error');
