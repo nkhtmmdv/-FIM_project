@@ -568,7 +568,7 @@ async function enableFile(encodedPath) {
 
 async function purgeFile(encodedPath) {
     if (!confirm('Permanently delete this file from monitoring?\nAll history and baseline data will be removed.')) return;
-    var res = await api('/files/purge/' + encodedPath, { method: 'DELETE' });
+    var res = await api('/files/purge/' + encodedPath, { method: 'POST' });
     if (res && res.ok) {
         showToast('File permanently removed', 'success');
         loadSettings();
