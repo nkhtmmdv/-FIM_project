@@ -77,10 +77,30 @@ systemctl start "${SERVICE_NAME}"
 sleep 3
 systemctl status "${SERVICE_NAME}" --no-pager -l
 
+# ── 5. Global 'fim' command ────────────────────────────────────────────────
+cat > /usr/local/bin/fim << EOF
+#!/usr/bin/env bash
+# FIM Sentinel control command
+cd "${INSTALL_DIR}"
+case "\${1:-status}" in
+    start)   systemctl start ${SERVICE_NAME} ;;
+    stop)    systemctl stop ${SERVICE_NAME} ;;
+    restart) systemctl restart ${SERVICE_NAME} ;;
+    logs)    docker compose logs -f --tail=50 ;;
+    status)  systemctl status ${SERVICE_NAME} --no-pager -l ;;
+    update)  git pull && docker compose up -d --build ;;
+    *)       echo "Usage: fim {start|stop|restart|status|logs|update}" ;;
+esac
+EOF
+chmod +x /usr/local/bin/fim
+echo "[OK] Global command 'fim' installed — use from anywhere"
+
 echo ""
 echo "=== Done! FIM Sentinel is running and will auto-start on boot ==="
 echo "    Dashboard: http://$(hostname -I | awk '{print $1}'):8080"
 echo ""
-echo "    To stop:    sudo systemctl stop ${SERVICE_NAME}"
-echo "    To disable: sudo systemctl disable ${SERVICE_NAME}"
-echo "    To check:   sudo systemctl status ${SERVICE_NAME}"
+echo "    fim status   — check status"
+echo "    fim logs     — view live logs"
+echo "    fim stop     — stop"
+echo "    fim start    — start"
+echo "    fim update   — pull latest and rebuild"
