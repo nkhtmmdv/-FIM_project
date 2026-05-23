@@ -1,6 +1,5 @@
 """Settings routes for user-configurable options."""
 from __future__ import annotations
-from typing import Dict
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 from auth import current_user

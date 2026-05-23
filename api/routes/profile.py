@@ -1,6 +1,5 @@
 """User profile and registration routes."""
 from __future__ import annotations
-import os
 import requests as req
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field

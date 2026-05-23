@@ -16,6 +16,11 @@ from typing import Dict, List
 import requests
 
 TELEGRAM_URL = 'https://api.telegram.org/bot{token}/sendMessage'
+MONITOR_ROOT = os.getenv('MONITOR_ROOT', '/monitored')
+
+def _display_path(p: str) -> str:
+    """Strip internal /monitored prefix so users see real host paths."""
+    return p[len(MONITOR_ROOT):] if p and p.startswith(MONITOR_ROOT + '/') else p
 
 def _load_settings() -> Dict[str, str]:
     """Load fresh settings directly from DB on every call."""
@@ -41,17 +46,22 @@ def _cfg(key: str, env_key: str, default: str = '') -> str:
 
 def format_alert(event: Dict[str, object], host: str) -> str:
     """Build the Telegram alert body."""
+    path = _display_path(str(event.get('file_path', '')))
+    kind = event['event_type']
+    icons = {'MODIFIED': '\u270f\ufe0f', 'DELETED': '\U0001f5d1', 'ADDED': '\U0001f195',
+             'PERMISSIONS_CHANGED': '\U0001f512', 'OWNER_CHANGED': '\U0001f464'}
+    icon = icons.get(kind, '\u26a0\ufe0f')
+    sev  = event.get('severity', 'INFO')
+    sev_icon = {'CRITICAL': '\U0001f534', 'WARNING': '\U0001f7e1', 'INFO': '\U0001f535'}.get(sev, '\u26aa')
     lines = [
-        f"\U0001f6a8 FIM ALERT \u2014 {event['event_type']}",
-        f"\U0001f4c1 File: {event['file_path']}",
-        f"\U0001f504 Change: {event['event_type']}",
-        f"\u23f1 Detected: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}",
-        f"\U0001f4ca Before: {event.get('hash_before')} \u2192 After: {event.get('hash_after')}",
-        f"\U0001f464 Owner: {event.get('owner_after') or event.get('owner_before')}",
-        f"\U0001f512 Permissions: {event.get('permissions_before')} \u2192 {event.get('permissions_after')}",
-        f"\U0001f4e6 Size: {event.get('size_before')} \u2192 {event.get('size_after')}",
+        f"{icon} *FIM ALERT* {sev_icon} {sev}",
+        f"\U0001f4c1 `{path}`",
+        f"\U0001f504 Event: *{kind}*",
+        f"\u23f1 {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
         f"\U0001f5a5 Host: {host}",
     ]
+    if event.get('hash_before') and event.get('hash_after'):
+        lines.append(f"Hash: `{str(event.get('hash_before',''))[:16]}...` \u2192 `{str(event.get('hash_after',''))[:16]}...`")
     return "\n".join(lines)
 
 
@@ -73,8 +83,12 @@ def send_email(events: List[Dict[str, object]]) -> None:
     with smtplib.SMTP(smtp_host, int(_cfg('smtp_port', 'SMTP_PORT', '587')), timeout=15) as smtp:
         smtp.starttls()
         user = _cfg('smtp_user', 'SMTP_USER')
+        password = _cfg('smtp_password', 'SMTP_PASSWORD')
         if user:
-            smtp.login(user, _cfg('smtp_password', 'SMTP_PASSWORD'))
+            if password:
+                smtp.login(user, password)
+            else:
+                logging.warning('[alerter] SMTP user configured without password; skipping auth')
         smtp.send_message(msg)
 
 
@@ -130,7 +144,7 @@ def _send_to(token: str, chat: str, events: List[Dict[str, object]]) -> None:
             try:
                 r = requests.post(
                     TELEGRAM_URL.format(token=token),
-                    json={'chat_id': chat, 'text': text},
+                    json={'chat_id': chat, 'text': text, 'parse_mode': 'Markdown'},
                     timeout=10
                 )
                 r.raise_for_status()

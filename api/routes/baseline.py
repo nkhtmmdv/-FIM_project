@@ -1,11 +1,13 @@
 """Baseline routes."""
 from __future__ import annotations
-import os, requests
+import os
+import requests
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from auth import current_user, verify_password
-from database import audit, execute, fetch_all, fetch_one
-router=APIRouter(prefix='/baseline',tags=['baseline'])
+from database import audit, fetch_one
+
+router = APIRouter(prefix='/baseline', tags=['baseline'])
 class Confirm(BaseModel):
     """Password confirmation body."""
     password:str

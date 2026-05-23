@@ -34,7 +34,7 @@ async function api(path, opts) {
     opts = opts || {};
     var headers = {
         'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + token
+        'Authorization': token ? 'Bearer ' + token : ''
     };
     if (opts.headers) {
         Object.keys(opts.headers).forEach(function (k) { headers[k] = opts.headers[k]; });
@@ -49,7 +49,11 @@ async function api(path, opts) {
         r = await fetch(API + path, opts);
         if (r.status === 401) { showPage('login'); return null; }
     }
-    return r.json();
+    try {
+        return await r.json();
+    } catch (e) {
+        return null;
+    }
 }
 
 /**
@@ -924,11 +928,35 @@ function renderPagination(containerId, offset, count, onChange) {
     var page = Math.floor(offset / PAGE_SIZE) + 1;
     var hasPrev = offset > 0;
     var hasNext = count === PAGE_SIZE;
-    if (!hasPrev && !hasNext) { el.innerHTML = ''; return; }
-    el.innerHTML =
-        (hasPrev ? '<button class="btn sm" onclick="(' + onChange.toString() + ')(' + (offset - PAGE_SIZE) + ')">&#8592; Prev</button>' : '') +
-        '<span style="margin:0 12px;color:var(--muted);font-size:13px">Page ' + page + '</span>' +
-        (hasNext ? '<button class="btn sm" onclick="(' + onChange.toString() + ')(' + (offset + PAGE_SIZE) + ')">Next &#8594;</button>' : '');
+    el.innerHTML = '';
+    if (!hasPrev && !hasNext) { return; }
+
+    if (hasPrev) {
+        var prev = document.createElement('button');
+        prev.className = 'btn sm';
+        prev.type = 'button';
+        prev.textContent = '← Prev';
+        prev.addEventListener('click', function () {
+            onChange(Math.max(0, offset - PAGE_SIZE));
+        });
+        el.appendChild(prev);
+    }
+
+    var pageInfo = document.createElement('span');
+    pageInfo.style.cssText = 'margin:0 12px;color:var(--muted);font-size:13px';
+    pageInfo.textContent = 'Page ' + page;
+    el.appendChild(pageInfo);
+
+    if (hasNext) {
+        var next = document.createElement('button');
+        next.className = 'btn sm';
+        next.type = 'button';
+        next.textContent = 'Next →';
+        next.addEventListener('click', function () {
+            onChange(offset + PAGE_SIZE);
+        });
+        el.appendChild(next);
+    }
 }
 
 /* =========================================================

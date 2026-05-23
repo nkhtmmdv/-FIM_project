@@ -1,5 +1,7 @@
 """Demo server: serves dashboard static files + fake API."""
-import json, os, sys
+import json
+import os
+import sys
 from http.server import SimpleHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse
 

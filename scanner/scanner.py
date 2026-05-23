@@ -3,7 +3,8 @@ from __future__ import annotations
 import time
 from typing import Dict, List, Tuple
 import yaml
-import alerter, db
+import alerter
+import db
 from hasher import expand_paths, snapshot
 from logger import get_logger
 CONFIG_PATH='config.yaml'; LOGGER=get_logger()
@@ -36,34 +37,104 @@ def compare(scan_id:int, snaps:Dict[str,Dict[str,object]], base:Dict[str,Dict[st
         if kind=='MODIFIED': stats['modified']+=1
         elif kind=='DELETED': stats['deleted']+=1
         elif kind=='ADDED': stats['added']+=1
-        elif kind=='PERMISSIONS_CHANGED': stats['permissions_changed']+=1
-        elif kind=='OWNER_CHANGED': stats['owner_changed']+=1
-        ev={'file_path':path,'event_type':kind,'severity':severity_for(path,sev),'hash_before':None if not b else b['sha256_hash'],'hash_after':s['sha256_hash'],'size_before':None if not b else b['file_size'],'size_after':s['file_size'],'permissions_before':None if not b else b['permissions'],'permissions_after':s['permissions'],'owner_before':None if not b else b['owner_name'],'owner_after':s['owner_name']}
-        if not db.has_unacked_duplicate(path,s['sha256_hash'],scan_id):
-            db.write_event(scan_id,ev); LOGGER.warning('file_change',{'scan_id':scan_id,'file_path':path,'event_type':kind,'hash_before':ev['hash_before'],'hash_after':ev['hash_after']})
+        elif kind == 'PERMISSIONS_CHANGED':
+            stats['permissions_changed'] += 1
+        elif kind == 'OWNER_CHANGED':
+            stats['owner_changed'] += 1
+
+        ev = {
+            'file_path': path,
+            'event_type': kind,
+            'severity': severity_for(path, sev),
+            'hash_before': None if not b else b['sha256_hash'],
+            'hash_after': s['sha256_hash'],
+            'size_before': None if not b else b['file_size'],
+            'size_after': s['file_size'],
+            'permissions_before': None if not b else b['permissions'],
+            'permissions_after': s['permissions'],
+            'owner_before': None if not b else b['owner_name'],
+            'owner_after': s['owner_name'],
+        }
+        if not db.has_unacked_duplicate(path, s['sha256_hash'], scan_id):
+            db.write_event(scan_id, ev)
+            LOGGER.warning(
+                'file_change',
+                {
+                    'scan_id': scan_id,
+                    'file_path': path,
+                    'event_type': kind,
+                    'hash_before': ev['hash_before'],
+                    'hash_after': ev['hash_after'],
+                },
+            )
         events.append(ev)
-    for path,b in base.items():
-        if path not in snaps and cfg.get('alert_on_deleted_files',True):
-            ev={'file_path':path,'event_type':'DELETED','severity':severity_for(path,sev),'hash_before':b['sha256_hash'],'hash_after':'DELETED','size_before':b['file_size'],'size_after':None,'permissions_before':b['permissions'],'permissions_after':None,'owner_before':b['owner_name'],'owner_after':None}
-            if not db.has_unacked_duplicate(path,'DELETED',scan_id): db.write_event(scan_id,ev)
-            events.append(ev); stats['deleted']+=1
-    return events,stats
-def run_scan(triggered_by:str='scheduler', reset_baseline:bool=False)->int:
+
+    for path, b in base.items():
+        if path not in snaps and cfg.get('alert_on_deleted_files', True):
+            ev = {
+                'file_path': path,
+                'event_type': 'DELETED',
+                'severity': severity_for(path, sev),
+                'hash_before': b['sha256_hash'],
+                'hash_after': 'DELETED',
+                'size_before': b['file_size'],
+                'size_after': None,
+                'permissions_before': b['permissions'],
+                'permissions_after': None,
+                'owner_before': b['owner_name'],
+                'owner_after': None,
+            }
+            if not db.has_unacked_duplicate(path, 'DELETED', scan_id):
+                db.write_event(scan_id, ev)
+            events.append(ev)
+            stats['deleted'] += 1
+
+    return events, stats
+
+
+def run_scan(triggered_by: str = 'scheduler', reset_baseline: bool = False) -> int:
     """Execute one scan and optionally replace baseline."""
-    started=time.time(); cfg=load_config(); paths=db.monitored_paths() or cfg['monitored_files']; expanded=expand_paths(paths); scan_id=db.start_scan(triggered_by)
+    started = time.time()
+    cfg = load_config()
+    paths = db.monitored_paths() or cfg['monitored_files']
+    expanded = expand_paths(paths)
+    scan_id = db.start_scan(triggered_by)
+
     try:
-        snaps={p:snapshot(p).to_dict() for p in expanded}; first=not db.baseline_exists()
+        snaps = {p: snapshot(p).to_dict() for p in expanded}
+        first = not db.baseline_exists()
         if first or reset_baseline:
-            db.replace_baseline(scan_id,snaps.values()); stats={'duration_ms':int((time.time()-started)*1000),'scanned':len(snaps),'clean':len(snaps),'modified':0,'deleted':0,'added':0}; db.finish_scan(scan_id,stats,'BASELINE_CREATED'); return scan_id
-        events,stats=compare(scan_id,snaps,db.load_baseline(),db.severities(),cfg)
-        stats['duration_ms']=int((time.time()-started)*1000)
-        db.finish_scan(scan_id,stats,'COMPLETE')
-        alerts=[e for e in events if e['event_type']!='UNCHANGED']
+            db.replace_baseline(scan_id, snaps.values())
+            stats = {
+                'duration_ms': int((time.time() - started) * 1000),
+                'scanned': len(snaps),
+                'clean': len(snaps),
+                'modified': 0,
+                'deleted': 0,
+                'added': 0,
+            }
+            db.finish_scan(scan_id, stats, 'BASELINE_CREATED')
+            return scan_id
+
+        events, stats = compare(scan_id, snaps, db.load_baseline(), db.severities(), cfg)
+        stats['duration_ms'] = int((time.time() - started) * 1000)
+        db.finish_scan(scan_id, stats, 'COMPLETE')
+        alerts = [e for e in events if e['event_type'] != 'UNCHANGED']
+
         # Re-alert for files that have unacknowledged open events from prior scans
         for r in db.get_unacked_open_changes(scan_id):
-            if not any(e['file_path']==r['file_path'] for e in alerts): alerts.append(r)
+            if not any(e['file_path'] == r['file_path'] for e in alerts):
+                alerts.append(r)
+
         alerter.dispatch(alerts)
+
         # Baseline advances only when user acknowledges — no auto-update here.
         return scan_id
     except Exception as exc:
-        db.finish_scan(scan_id,{'duration_ms':int((time.time()-started)*1000)},'FAILED'); LOGGER.error(str(exc), {'scan_id':scan_id,'event_type':'SCAN_FAILED'}); raise
+        db.finish_scan(
+            scan_id,
+            {'duration_ms': int((time.time() - started) * 1000)},
+            'FAILED',
+        )
+        LOGGER.error(str(exc), {'scan_id': scan_id, 'event_type': 'SCAN_FAILED'})
+        raise
