@@ -17,9 +17,9 @@
 <!-- Navbar -->
 <nav class="nav">
   <div class="nav-left">
-    <div class="logo"><span class="logo-mark">◆</span><span>FIM Sentinel</span></div>
+    <div class="logo">FIM Sentinel</div>
     <div class="nav-links">
-      <a href="#dashboard" class="active" data-page="dashboard">Overview</a>
+      <a href="#dashboard" class="active" data-page="dashboard">Dashboard</a>
       <a href="#alerts" data-page="alerts">Alerts</a>
       <a href="#history" data-page="history">History</a>
       <a href="#settings" data-page="settings">Settings</a>
@@ -37,17 +37,7 @@
 
 <!-- ==================== PAGE: LOGIN ==================== -->
 <div id="page-login" class="page">
-  <div class="auth-shell">
-    <div class="auth-copy">
-      <div class="eyebrow">Linux File Integrity Monitor</div>
-      <h1>Detect file tampering before it becomes an incident.</h1>
-      <p>Monitor critical Linux files, receive Telegram alerts, and acknowledge trusted changes with a clean forensic trail.</p>
-      <div class="auth-points">
-        <span>Read-only scanner</span>
-        <span>Local database</span>
-        <span>Telegram alerts</span>
-      </div>
-    </div>
+  <div style="max-width:380px;margin:80px auto;padding:0 24px">
     <div class="panel" id="loginPanel">
       <h2 style="margin-bottom:20px;text-align:center">Sign In</h2>
       <input id="loginUser" class="input" placeholder="Username" style="margin-bottom:12px" onkeydown="if(event.key==='Enter')login()">
@@ -75,10 +65,10 @@
 <div id="page-dashboard" class="page">
   <!-- Stat cards -->
   <section class="grid-4">
-    <div class="card" id="cardTotal"><div class="card-icon">Σ</div><small>Total Files</small><h1 id="total">0</h1></div>
-    <div class="card" id="cardClean"><div class="card-icon">✓</div><small>Clean</small><h1 id="clean">0</h1></div>
-    <div class="card" id="cardAlerts"><div class="card-icon">!</div><small>Alerts (24h)</small><h1 id="alertCount">0</h1></div>
-    <div class="card" id="cardCritical"><div class="card-icon">×</div><small>Critical</small><h1 id="critical">0</h1></div>
+    <div class="card" id="cardTotal"><small>Total Files</small><h1 id="total">0</h1></div>
+    <div class="card" id="cardClean"><small>Clean</small><h1 id="clean">0</h1></div>
+    <div class="card" id="cardAlerts"><small>Alerts (24h)</small><h1 id="alertCount">0</h1></div>
+    <div class="card" id="cardCritical"><small>Critical</small><h1 id="critical">0</h1></div>
   </section>
 
   <!-- Main layout -->
