@@ -1,233 +1,233 @@
 # FIM Sentinel
 
-> **File Integrity Monitor** — защита Linux-системы от несанкционированных изменений файлов в реальном времени.
+> **File Integrity Monitor** — real-time protection of your Linux system against unauthorized file changes.
 
-Программа следит за указанными файлами, мгновенно обнаруживает любые изменения и отправляет уведомления в Telegram. Каждый пользователь запускает её **полностью локально** — данные хранятся только на вашей машине и никуда не передаются.
+FIM Sentinel watches your critical files, instantly detects any modification, and sends alerts to Telegram. Every user runs it **completely locally** — your data never leaves your machine.
 
 ---
 
-## Как это работает
+## How It Works
 
 ```
- Ваши файлы (/etc/passwd, /etc/hosts ...)
+ Your files (/etc/passwd, /etc/hosts, ...)
           │
-   [ Сканер ] ──── каждые N секунд ────► сравнивает с базовым состоянием
-          │                                          │
-    обнаружил изменение?                      всё в порядке?
-          │                                          │
-    ► Telegram-уведомление               ► тихо ждёт следующего скана
-    ► запись в базу данных
-    ► отображение в дашборде
+   [ Scanner ] ──── every N seconds ────► compares against baseline
+          │                                        │
+    change detected?                         everything OK?
+          │                                        │
+    ► Telegram alert                    ► waits for next scan silently
+    ► stored in database
+    ► shown in dashboard
 ```
 
-**Компоненты:**
-- **Scanner** — хэширует файлы, сравнивает с базовой линией, отправляет алерты
-- **API** — REST + WebSocket, защищён JWT-токенами
-- **Dashboard** — веб-интерфейс с тёмной темой, графиками и историей
-- **PostgreSQL** — хранит базовую линию, события, пользователей, журнал аудита
+**Components:**
+- **Scanner** — hashes files, compares to baseline, dispatches alerts
+- **API** — JWT-secured REST + WebSocket endpoints
+- **Dashboard** — dark-mode web UI with live updates, charts, and CSV export
+- **PostgreSQL** — stores baseline, events, users, and full audit log
 
-Все компоненты работают в Docker. База данных изолирована во внутренней сети без доступа в интернет.
+All components run in Docker. The database is isolated on an internal network with no internet access.
 
 ---
 
-## Требования
+## Requirements
 
-- Linux (Debian, Ubuntu, Kali, CentOS и др.)
+- Linux (Debian, Ubuntu, Kali, CentOS, etc.)
 - [Docker](https://docs.docker.com/engine/install/) + Docker Compose v2
-- `git`, `openssl` (обычно уже установлены)
-- Root-доступ (sudo)
+- `git`, `openssl` (usually pre-installed)
+- Root access (sudo)
 
 ---
 
-## Установка
+## Installation
 
-### Быстрая установка (рекомендуется)
+### One-Command Install (recommended)
 
 ```bash
-# 1. Клонируй репозиторий
+# 1. Clone the repository
 git clone https://github.com/nkhtmmdv/-FIM_project.git
 cd -FIM_project
 
-# 2. Запусти установщик (один раз)
+# 2. Run the installer (once)
 sudo bash install.sh
 ```
 
-Установщик автоматически:
-- Генерирует уникальные случайные пароли для вашей машины
-- Регистрирует автозапуск при старте системы
-- Запускает программу
-- Создаёт команду `fim` для управления из любого места
-- Настраивает автоматическое открытие браузера при входе в систему
+The installer automatically:
+- Generates **unique random passwords** for your machine (no two installs share credentials)
+- Registers **autostart** on system boot via systemd
+- Launches all containers
+- Creates the `fim` command for control from anywhere in the terminal
+- Configures the browser to open the dashboard automatically on desktop login
 
-После завершения откройте браузер на `http://localhost:8080`.
-
----
-
-## Первый запуск
-
-1. Откройте `http://localhost:8080`
-2. Нажмите **Register** и создайте свой аккаунт
-3. Войдите в систему
-4. Перейдите в **Settings** → нажмите **Create Baseline** (зафиксирует текущее состояние файлов как «норма»)
-5. Добавьте файлы для мониторинга в **Settings** → Monitored Files (например: `/etc/passwd`)
-6. Настройте Telegram для получения уведомлений (см. ниже)
+Once done, open your browser at `http://localhost:8080`.
 
 ---
 
-## Настройка Telegram-уведомлений
+## First Run
 
-1. Откройте Telegram → найдите **@BotFather** → отправьте `/newbot`
-2. Придумайте имя боту (например: `MyFIM Bot`) и username (оканчивается на `bot`)
-3. BotFather выдаст токен вида `123456789:AAF...` — скопируйте его
-4. Начните чат с вашим ботом (найдите его в Telegram и нажмите Start)
-5. Узнайте ваш Chat ID — откройте в браузере:
+1. Open `http://localhost:8080`
+2. Click **Register** and create your account
+3. Log in
+4. Go to **Settings** → click **Create Baseline** (snapshots the current state of your files as "normal")
+5. Add files to monitor in **Settings** → Monitored Files (e.g. `/etc/passwd`)
+6. Configure Telegram alerts (see below)
+
+---
+
+## Telegram Alert Setup
+
+1. Open Telegram → find **@BotFather** → send `/newbot`
+2. Choose a display name (e.g. `My FIM Bot`) and a username ending in `bot`
+3. BotFather replies with a token like `123456789:AAF...` — copy it
+4. Start a chat with your new bot (find it in Telegram, press Start)
+5. Get your Chat ID — open this in a browser:
    ```
-   https://api.telegram.org/bot<ВАШ_ТОКЕН>/getUpdates
+   https://api.telegram.org/bot<YOUR_TOKEN>/getUpdates
    ```
-   Найдите `"chat":{"id": 123456789}` — это ваш Chat ID
-6. В дашборде перейдите в **Settings** → вставьте токен и Chat ID → нажмите **Save** → **Test**
+   Find `"chat":{"id": 123456789}` — that number is your Chat ID
+6. In the dashboard go to **Settings** → paste the token and Chat ID → click **Save** → **Test**
 
-Алерты приходят после каждого скана пока не нажат **Acknowledge**.
+Alerts fire after **every scan** until you press **Acknowledge**.
 
 ---
 
-## Управление программой
+## Managing FIM Sentinel
 
-После установки используйте команду `fim` из любого места в терминале:
+After installation, use the `fim` command from anywhere in the terminal:
 
 ```bash
-fim status    # статус (запущена / остановлена)
-fim start     # запустить
-fim stop      # остановить
-fim restart   # перезапустить
-fim logs      # просмотр логов в реальном времени
-fim update    # обновить до последней версии и пересобрать
+fim status    # show running status
+fim start     # start all containers
+fim stop      # stop all containers
+fim restart   # restart all containers
+fim logs      # stream live logs
+fim update    # pull latest version and rebuild
 ```
 
 ---
 
-## Использование дашборда
+## Dashboard Guide
 
-### Dashboard (главная)
-- Счётчики файлов, алертов, последнего скана
-- Таймер до следующего скана
-- Лента последних событий
-- График алертов за 24 часа
+### Dashboard (home)
+- File count, alert count, last scan time
+- Countdown timer to the next scan
+- Recent events feed
+- 24-hour alert timeline chart
 
-### Alerts (алерты)
-- Полный список всех обнаруженных изменений
-- Фильтрация по типу, серьёзности, пути к файлу
-- Кнопка **Acknowledge** — подтверждает что вы видели изменение и сохраняет новое состояние как «норма»
-- Экспорт в CSV
+### Alerts
+- Full list of all detected changes
+- Filter by severity, event type, or file path
+- **Acknowledge** button — marks the change as reviewed and saves the new state as the new baseline
+- Export to CSV
 
-### History (история)
-- История всех сканирований
-- Детали каждого скана: сколько файлов проверено, что изменилось
+### History
+- Full scan history
+- Per-scan details: files scanned, changes found, duration
 
-### Settings (настройки)
+### Settings
 
-| Раздел | Описание |
+| Section | Description |
 |---|---|
-| Monitored Files | Добавить / удалить файлы для слежения (пишите путь как `/etc/passwd`) |
-| Baseline Management | Создать или сбросить базовую линию |
-| Telegram (личный) | Ваш личный бот-токен и Chat ID |
-| SMTP | Email-уведомления |
-| Scan Interval | Как часто проверять файлы (в секундах) |
+| Monitored Files | Add / remove files to watch (type the path as `/etc/passwd`) |
+| Baseline Management | Create or reset the baseline snapshot |
+| Telegram | Your personal bot token and Chat ID |
+| SMTP | Email alert configuration |
+| Scan Interval | How often to scan (in seconds) |
 
 ---
 
-## Логика алертов
+## Alert Behaviour
 
-| Событие | Поведение |
+| Event | Result |
 |---|---|
-| Файл изменился | Telegram-уведомление приходит после **каждого скана** |
-| Нажал Acknowledge | Система запоминает новое состояние → уведомления прекращаются |
-| Файл изменился снова | Telegram снова приходит после каждого скана |
-| Файл удалён | Алерт типа DELETED |
-| Новый файл появился | Алерт типа ADDED |
-| Изменились права доступа | Алерт типа PERMISSIONS_CHANGED |
+| File modified | Telegram alert fires after **every scan** |
+| Acknowledge pressed | New state saved as baseline → alerts stop |
+| File modified again | Telegram fires again after every scan |
+| File deleted | `DELETED` alert |
+| New file appears | `ADDED` alert |
+| Permissions changed | `PERMISSIONS_CHANGED` alert |
 
-**Серьёзность алертов:**
+**Severity levels:**
 
-| Уровень | Цвет | Назначение |
+| Level | Colour | Use for |
 |---|---|---|
-| CRITICAL | Красный | Критические системные файлы |
-| WARNING | Жёлтый | Важные конфигурационные файлы |
-| INFO | Синий | Остальные файлы |
+| CRITICAL | Red | Critical system files |
+| WARNING | Yellow | Important config files |
+| INFO | Blue | Everything else |
 
 ---
 
-## Безопасность
+## Security
 
-- **Данные** — хранятся только локально, никогда не отправляются на внешние серверы
-- **Пароли** — каждая установка получает уникальные случайные пароли (генерирует `install.sh`)
-- **JWT** — HS256, токены доступа 1 час, refresh-токены 7 дней
-- **Пароли пользователей** — bcrypt, cost factor 12
-- **Сеть** — PostgreSQL и сканер изолированы во внутренней Docker-сети без интернета
-- **Файловая система** — сканер читает файлы только в режиме read-only
-- **SQL** — параметризованные запросы, SQL-инъекции невозможны
-- **Аудит** — все действия пользователей (вход, добавление файлов, подтверждение алертов) записываются в лог
+- **Data** — stored locally only; never sent to any external server
+- **Credentials** — each install generates unique random passwords via `openssl rand`
+- **JWT** — HS256, 1-hour access tokens, 7-day refresh tokens
+- **User passwords** — bcrypt, cost factor 12
+- **Network** — PostgreSQL and scanner are isolated on an internal Docker network with no internet
+- **Filesystem** — scanner mounts host files read-only; cannot write to them
+- **SQL** — parameterised queries everywhere; SQL injection is not possible
+- **Audit log** — every user action (login, file add/remove, baseline reset, alert acknowledge) is recorded
 
 ---
 
-## API (для разработчиков)
+## API Reference
 
-| Метод | Эндпоинт | Описание |
-|-------|----------|----------|
-| POST | `/api/v1/auth/login` | Получить JWT-токен |
-| POST | `/api/v1/auth/register` | Зарегистрироваться |
-| GET | `/api/v1/files` | Список отслеживаемых файлов |
-| POST | `/api/v1/files/add` | Добавить файл |
-| DELETE | `/api/v1/files/{path}` | Удалить файл из мониторинга |
-| GET | `/api/v1/alerts` | Список алертов (с фильтрами) |
-| PUT | `/api/v1/alerts/{id}/acknowledge` | Подтвердить алерт |
-| POST | `/api/v1/baseline/create` | Создать базовую линию |
-| GET | `/api/v1/baseline/status` | Статус базовой линии |
-| POST | `/api/v1/scan/trigger` | Запустить ручной скан |
-| GET | `/api/v1/stats/summary` | Сводная статистика |
-| WS | `/ws/live` | Поток событий в реальном времени |
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/v1/auth/login` | Authenticate, receive JWT tokens |
+| POST | `/api/v1/auth/register` | Create a new account |
+| GET | `/api/v1/files` | List monitored files |
+| POST | `/api/v1/files/add` | Add a file to monitoring |
+| DELETE | `/api/v1/files/{path}` | Remove a file from monitoring |
+| GET | `/api/v1/alerts` | List alerts (filterable) |
+| PUT | `/api/v1/alerts/{id}/acknowledge` | Acknowledge an alert |
+| POST | `/api/v1/baseline/create` | Create a new baseline |
+| GET | `/api/v1/baseline/status` | Baseline metadata |
+| POST | `/api/v1/scan/trigger` | Trigger an immediate scan |
+| GET | `/api/v1/stats/summary` | Dashboard summary counters |
+| WS | `/ws/live` | Real-time event stream |
 
-Все запросы (кроме login/register) требуют заголовок:
+All requests except `login` and `register` require:
 ```
-Authorization: Bearer <ваш_токен>
+Authorization: Bearer <your_token>
 ```
 
 ---
 
-## Устранение неполадок
+## Troubleshooting
 
-**Не могу войти в систему**
-→ Убедитесь что контейнеры запущены: `fim status`
-→ Проверьте логи: `fim logs`
+**Cannot log in**
+→ Check containers are running: `fim status`
+→ View logs for errors: `fim logs`
 
-**Telegram-уведомления не приходят**
-→ Проверьте токен и Chat ID в Settings → нажмите **Test**
-→ Убедитесь что начали чат с ботом в Telegram
+**No Telegram alerts**
+→ Check your token and Chat ID in Settings → press **Test**
+→ Make sure you started a chat with your bot in Telegram first
 
-**Дашборд не открывается**
-→ Проверьте что программа запущена: `fim status`
-→ Откройте `http://localhost:8080` (не `https`)
+**Dashboard won't open**
+→ Confirm the stack is running: `fim status`
+→ Use `http://localhost:8080` (not `https`)
 
-**Нет алертов при изменении файла**
-→ Убедитесь что создана базовая линия (Settings → Create Baseline)
-→ Добавьте файл в Monitored Files
-→ Нажмите Manual Trigger для немедленного скана
+**No alerts when a file changes**
+→ Make sure you created a baseline (Settings → Create Baseline)
+→ Confirm the file is listed in Monitored Files
+→ Press **Manual Trigger** in the dashboard for an immediate scan
 
 **502 Bad Gateway**
-→ Перезапустите все контейнеры: `fim restart`
+→ Restart all containers: `fim restart`
 
 ---
 
-## Обновление
+## Updating
 
 ```bash
 fim update
 ```
 
-Команда автоматически скачает последнюю версию и пересоберёт контейнеры.
+Pulls the latest version from git and rebuilds all containers automatically.
 
 ---
 
-## Лицензия
+## License
 
-MIT — используйте свободно для личных и коммерческих целей.
+MIT — free to use for personal and commercial purposes.
