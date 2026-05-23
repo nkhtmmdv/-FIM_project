@@ -463,17 +463,27 @@ async function loadSettings() {
     var files = await api('/files?limit=200');
     if (files) {
         var body = document.getElementById('monitoredBody');
-        body.innerHTML = files.map(function (f) {
-            var enc = encodeURIComponent(f.file_path);
-            var toggleBtn = f.is_active
-                ? '<button class="btn sm danger" onclick="disableFile(\'' + enc + '\')">Disable</button>'
-                : '<button class="btn sm" onclick="enableFile(\'' + enc + '\')">Enable</button>';
-            return '<tr style="opacity:' + (f.is_active ? '1' : '0.45') + '">' +
-                '<td>' + esc(f.file_path) + '</td>' +
-                '<td><span class="badge ' + (f.severity || 'INFO') + '">' + (f.severity || '') + '</span></td>' +
-                '<td>' + (f.is_active ? '<span style="color:#4ade80">Active</span>' : '<span style="color:#f87171">Disabled</span>') + '</td>' +
-                '<td>' + toggleBtn + '</td></tr>';
-        }).join('');
+        if (!files.length) {
+            body.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:28px;color:var(--tx-3)">No files monitored yet</td></tr>';
+        } else {
+            body.innerHTML = files.map(function (f) {
+                var enc = encodeURIComponent(f.file_path);
+                var isActive = !!f.is_active;
+                var dot = '<span class="status-dot ' + (isActive ? 'clean' : 'warning') + '" style="margin-right:6px;vertical-align:middle"></span>';
+                var statusLabel = isActive
+                    ? '<span style="color:#4ade80;font-size:12px">Active</span>'
+                    : '<span style="color:#f59e0b;font-size:12px">Disabled</span>';
+                var toggleBtn = isActive
+                    ? '<button class="btn sm" title="Disable monitoring" onclick="disableFile(\'' + enc + '\')" style="color:#f59e0b;border-color:rgba(245,158,11,.25)">Pause</button>'
+                    : '<button class="btn sm" title="Enable monitoring" onclick="enableFile(\'' + enc + '\')" style="color:#4ade80;border-color:rgba(74,222,128,.25)">Resume</button>';
+                var deleteBtn = '<button class="btn sm danger" title="Permanently remove from monitoring" onclick="purgeFile(\'' + enc + '\')" style="margin-left:4px">Delete</button>';
+                return '<tr style="opacity:' + (isActive ? '1' : '0.6') + '">' +
+                    '<td style="font-family:monospace;font-size:12px;word-break:break-all">' + dot + esc(f.file_path) + '</td>' +
+                    '<td><span class="badge ' + (f.severity || 'INFO') + '">' + (f.severity || 'INFO') + '</span></td>' +
+                    '<td>' + statusLabel + '</td>' +
+                    '<td style="text-align:right;white-space:nowrap">' + toggleBtn + deleteBtn + '</td></tr>';
+            }).join('');
+        }
     }
     var bl = await api('/baseline/status');
     if (bl) {
@@ -546,14 +556,23 @@ async function removeFile(encodedPath) {
 
 async function disableFile(encodedPath) {
     await api('/files/' + encodedPath, { method: 'DELETE' });
-    showToast('Monitoring disabled for this path', 'info');
+    showToast('Monitoring paused', 'info');
     loadSettings();
 }
 
 async function enableFile(encodedPath) {
     await api('/files/enable/' + encodedPath, { method: 'POST' });
-    showToast('Monitoring enabled for this path', 'success');
+    showToast('Monitoring resumed', 'success');
     loadSettings();
+}
+
+async function purgeFile(encodedPath) {
+    if (!confirm('Permanently delete this file from monitoring?\nAll history and baseline data will be removed.')) return;
+    var res = await api('/files/purge/' + encodedPath, { method: 'DELETE' });
+    if (res && res.ok) {
+        showToast('File permanently removed', 'success');
+        loadSettings();
+    }
 }
 
 /* =========================================================

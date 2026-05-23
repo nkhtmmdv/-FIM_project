@@ -124,3 +124,19 @@ def enable_file(path: str, request: Request, user=Depends(current_user)):
         request.client.host if request.client else None,
     )
     return {'ok': True}
+
+
+@router.delete('/purge/{path:path}')
+def purge_file(path: str, request: Request, user=Depends(current_user)):
+    """Permanently delete a file from monitoring, baseline and events."""
+    target = _to_scan('/' + path)
+    execute('DELETE FROM file_events WHERE file_path=%s', (target,))
+    execute('DELETE FROM baseline_hashes WHERE file_path=%s', (target,))
+    execute('DELETE FROM monitored_files WHERE file_path=%s', (target,))
+    audit(
+        user['username'],
+        'file.purge',
+        target,
+        request.client.host if request.client else None,
+    )
+    return {'ok': True}

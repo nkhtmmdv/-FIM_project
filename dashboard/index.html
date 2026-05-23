@@ -195,18 +195,18 @@
       <!-- Monitored files -->
       <div class="panel">
         <h2 class="mb-8">Monitored Files</h2>
-        <div class="row gap-sm" style="margin-bottom:12px">
-          <input class="input" id="newFilePath" placeholder="/path/to/file">
-          <select class="input" id="newFileSeverity" style="width:140px">
+        <div class="row gap-sm" style="margin-bottom:14px">
+          <input class="input" id="newFilePath" placeholder="/path/to/file or directory">
+          <select class="input" id="newFileSeverity" style="width:130px;flex-shrink:0">
             <option value="WARNING">Warning</option>
             <option value="CRITICAL">Critical</option>
             <option value="INFO">Info</option>
           </select>
-          <button class="btn primary" onclick="addFile()">Add</button>
+          <button class="btn primary" style="flex-shrink:0" onclick="addFile()">+ Add</button>
         </div>
-        <div style="max-height:400px;overflow-y:auto">
+        <div style="max-height:420px;overflow-y:auto">
           <table>
-            <thead><tr><th>Path</th><th>Severity</th><th>Active</th><th></th></tr></thead>
+            <thead><tr><th>Path</th><th>Severity</th><th>Status</th><th style="text-align:right">Actions</th></tr></thead>
             <tbody id="monitoredBody"></tbody>
           </table>
         </div>
