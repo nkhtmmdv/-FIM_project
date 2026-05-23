@@ -1,171 +1,233 @@
 # FIM Sentinel
 
-Production-grade Linux **File Integrity Monitor** with a Python scanner engine, FastAPI REST API, PostgreSQL persistence, and a dark-themed analyst dashboard.
+> **File Integrity Monitor** — защита Linux-системы от несанкционированных изменений файлов в реальном времени.
 
-## Architecture
-
-```
- Host filesystem (read-only mounts)
-          |
-   [ Scanner Engine ] ---> [ PostgreSQL 15 ] <--- [ FastAPI API ]
-          |                                             |
-   Telegram / SMTP                               [ Nginx Dashboard ]
-                                                        |
-                                                   Analyst browser
-```
-
-- **Scanner** — hashes files every N seconds, compares to baseline, writes events, dispatches alerts.
-- **API** — JWT-secured REST + WebSocket endpoints for dashboard and automation.
-- **Dashboard** — single-page dark-mode UI with live updates, charts, and CSV export.
-- **PostgreSQL** — stores baselines, scan results, events, users, and audit log.
-
-All services run in Docker. The scanner and database are on an isolated internal network with no internet access.
+Программа следит за указанными файлами, мгновенно обнаруживает любые изменения и отправляет уведомления в Telegram. Каждый пользователь запускает её **полностью локально** — данные хранятся только на вашей машине и никуда не передаются.
 
 ---
 
-## 5-Command Quickstart
+## Как это работает
+
+```
+ Ваши файлы (/etc/passwd, /etc/hosts ...)
+          │
+   [ Сканер ] ──── каждые N секунд ────► сравнивает с базовым состоянием
+          │                                          │
+    обнаружил изменение?                      всё в порядке?
+          │                                          │
+    ► Telegram-уведомление               ► тихо ждёт следующего скана
+    ► запись в базу данных
+    ► отображение в дашборде
+```
+
+**Компоненты:**
+- **Scanner** — хэширует файлы, сравнивает с базовой линией, отправляет алерты
+- **API** — REST + WebSocket, защищён JWT-токенами
+- **Dashboard** — веб-интерфейс с тёмной темой, графиками и историей
+- **PostgreSQL** — хранит базовую линию, события, пользователей, журнал аудита
+
+Все компоненты работают в Docker. База данных изолирована во внутренней сети без доступа в интернет.
+
+---
+
+## Требования
+
+- Linux (Debian, Ubuntu, Kali, CentOS и др.)
+- [Docker](https://docs.docker.com/engine/install/) + Docker Compose v2
+- `git`, `openssl` (обычно уже установлены)
+- Root-доступ (sudo)
+
+---
+
+## Установка
+
+### Быстрая установка (рекомендуется)
 
 ```bash
-# 1. Copy environment template
-cp .env.example .env
+# 1. Клонируй репозиторий
+git clone https://github.com/nkhtmmdv/-FIM_project.git
+cd -FIM_project
 
-# 2. Generate secure secrets automatically
-python3 -c "
-import secrets
-p='.env'; s=open(p).read()
-s=s.replace('change_me_minimum_32_characters_long', secrets.token_urlsafe(32))
-s=s.replace('change_me_minimum_64_characters_long_change_me_minimum_64_characters_long', secrets.token_urlsafe(64))
-s=s.replace('change_me_before_first_start', secrets.token_urlsafe(18))
-s=s.replace('change_me_reset_token', secrets.token_urlsafe(32))
-open(p,'w').write(s)
-"
-
-# 3. Build all images
-docker compose build
-
-# 4. Start the stack
-docker compose up -d
-
-# 5. Watch logs
-docker compose logs -f scanner api
+# 2. Запусти установщик (один раз)
+sudo bash install.sh
 ```
 
-Open `http://localhost:8080` and log in with the `ADMIN_USERNAME` / `ADMIN_PASSWORD` from your `.env`.
+Установщик автоматически:
+- Генерирует уникальные случайные пароли для вашей машины
+- Регистрирует автозапуск при старте системы
+- Запускает программу
+- Создаёт команду `fim` для управления из любого места
+- Настраивает автоматическое открытие браузера при входе в систему
+
+После завершения откройте браузер на `http://localhost:8080`.
 
 ---
 
-## First Baseline Scan
+## Первый запуск
 
-On the very first scanner start, if the `baseline_hashes` table is empty, the scanner automatically creates a baseline and does **not** fire any alerts. Every subsequent scan compares against this baseline.
-
-To force a new baseline later:
-- **Dashboard** — Settings page > Baseline Management > "Create New Baseline"
-- **API** — `POST /api/v1/baseline/create` with a valid JWT Bearer token
-- **Per-file** — File detail drawer > "Reset Baseline" (requires password re-confirmation)
+1. Откройте `http://localhost:8080`
+2. Нажмите **Register** и создайте свой аккаунт
+3. Войдите в систему
+4. Перейдите в **Settings** → нажмите **Create Baseline** (зафиксирует текущее состояние файлов как «норма»)
+5. Добавьте файлы для мониторинга в **Settings** → Monitored Files (например: `/etc/passwd`)
+6. Настройте Telegram для получения уведомлений (см. ниже)
 
 ---
 
-## Telegram Bot Setup
+## Настройка Telegram-уведомлений
 
-1. Open Telegram, search for **@BotFather**, and start a chat.
-2. Send `/newbot`. Choose a display name and a username (must end in `bot`).
-3. BotFather replies with a **bot token** like `123456:ABC-DEF...`. Copy it.
-4. Paste the token into `TELEGRAM_BOT_TOKEN` in your `.env`.
-5. Start a chat with your new bot (or add it to a group).
-6. Send any message to the bot, then open:
+1. Откройте Telegram → найдите **@BotFather** → отправьте `/newbot`
+2. Придумайте имя боту (например: `MyFIM Bot`) и username (оканчивается на `bot`)
+3. BotFather выдаст токен вида `123456789:AAF...` — скопируйте его
+4. Начните чат с вашим ботом (найдите его в Telegram и нажмите Start)
+5. Узнайте ваш Chat ID — откройте в браузере:
    ```
-   https://api.telegram.org/bot<YOUR_TOKEN>/getUpdates
+   https://api.telegram.org/bot<ВАШ_ТОКЕН>/getUpdates
    ```
-7. Find `"chat":{"id": 123456789}` in the response. Copy that number.
-8. Paste it into `TELEGRAM_CHAT_ID` in your `.env`.
-9. Restart the scanner: `docker compose restart scanner`.
+   Найдите `"chat":{"id": 123456789}` — это ваш Chat ID
+6. В дашборде перейдите в **Settings** → вставьте токен и Chat ID → нажмите **Save** → **Test**
 
-Alerts are batched (5 per message) and sent with exponential backoff on failure.
+Алерты приходят после каждого скана пока не нажат **Acknowledge**.
 
 ---
 
-## Simulate an Attack (Testing)
+## Управление программой
 
-> **Only run this on a disposable test host. Never modify real system files.**
+После установки используйте команду `fim` из любого места в терминале:
 
 ```bash
-# Create a test directory with copies of system files
-mkdir -p ./test-files
-cp /etc/passwd ./test-files/passwd-copy
-cp /etc/hosts  ./test-files/hosts-copy
-
-# Add the test path to docker-compose scanner volumes:
-#   - ./test-files:/monitored/test-files:ro
-
-# Restart, create a baseline, then modify a file:
-echo "hacker:x:0:0::/root:/bin/bash" >> ./test-files/passwd-copy
-chmod 777 ./test-files/hosts-copy
-
-# The next scan cycle will detect MODIFIED and PERMISSIONS_CHANGED events.
+fim status    # статус (запущена / остановлена)
+fim start     # запустить
+fim stop      # остановить
+fim restart   # перезапустить
+fim logs      # просмотр логов в реальном времени
+fim update    # обновить до последней версии и пересобрать
 ```
 
-You can also use the dashboard's "Manual Trigger" button to force an immediate scan.
+---
+
+## Использование дашборда
+
+### Dashboard (главная)
+- Счётчики файлов, алертов, последнего скана
+- Таймер до следующего скана
+- Лента последних событий
+- График алертов за 24 часа
+
+### Alerts (алерты)
+- Полный список всех обнаруженных изменений
+- Фильтрация по типу, серьёзности, пути к файлу
+- Кнопка **Acknowledge** — подтверждает что вы видели изменение и сохраняет новое состояние как «норма»
+- Экспорт в CSV
+
+### History (история)
+- История всех сканирований
+- Детали каждого скана: сколько файлов проверено, что изменилось
+
+### Settings (настройки)
+
+| Раздел | Описание |
+|---|---|
+| Monitored Files | Добавить / удалить файлы для слежения (пишите путь как `/etc/passwd`) |
+| Baseline Management | Создать или сбросить базовую линию |
+| Telegram (личный) | Ваш личный бот-токен и Chat ID |
+| SMTP | Email-уведомления |
+| Scan Interval | Как часто проверять файлы (в секундах) |
 
 ---
 
-## API Endpoints Reference
+## Логика алертов
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/v1/auth/login` | Authenticate, get JWT + refresh token |
-| POST | `/api/v1/auth/refresh` | Refresh access token |
-| GET | `/api/v1/files` | List monitored files (paginated) |
-| GET | `/api/v1/files/{path}` | Single file + full history |
-| POST | `/api/v1/files/add` | Add a monitored path |
-| DELETE | `/api/v1/files/{path}` | Deactivate a monitored path |
-| GET | `/api/v1/alerts` | List alerts (filterable) |
-| GET | `/api/v1/alerts/recent` | Last 20 alerts |
-| PUT | `/api/v1/alerts/{id}/acknowledge` | Acknowledge an alert |
-| POST | `/api/v1/baseline/create` | Trigger baseline creation |
-| POST | `/api/v1/baseline/reset/{path}` | Reset baseline (password required) |
-| GET | `/api/v1/baseline/status` | Baseline metadata |
-| GET | `/api/v1/scan/status` | Latest scan status |
-| POST | `/api/v1/scan/trigger` | Trigger manual scan |
-| GET | `/api/v1/scan/history` | Scan history (last 100) |
-| GET | `/api/v1/stats/summary` | Dashboard summary counters |
-| GET | `/api/v1/stats/timeline` | Hourly alert timeline (24h) |
-| GET | `/api/v1/stats/top-changed` | Top 10 most-changed files |
-| WS | `/ws/live` | Live events stream |
+| Событие | Поведение |
+|---|---|
+| Файл изменился | Telegram-уведомление приходит после **каждого скана** |
+| Нажал Acknowledge | Система запоминает новое состояние → уведомления прекращаются |
+| Файл изменился снова | Telegram снова приходит после каждого скана |
+| Файл удалён | Алерт типа DELETED |
+| Новый файл появился | Алерт типа ADDED |
+| Изменились права доступа | Алерт типа PERMISSIONS_CHANGED |
+
+**Серьёзность алертов:**
+
+| Уровень | Цвет | Назначение |
+|---|---|---|
+| CRITICAL | Красный | Критические системные файлы |
+| WARNING | Жёлтый | Важные конфигурационные файлы |
+| INFO | Синий | Остальные файлы |
 
 ---
 
-## Troubleshooting — Top 10
+## Безопасность
 
-1. **API crashes at startup** — `JWT_SECRET` must be 64+ characters and `POSTGRES_PASSWORD` must be 32+ characters. Run the secret-generation script above.
-
-2. **Login fails with "bad credentials"** — Confirm `ADMIN_PASSWORD` in `.env`. If you changed it after the first boot, delete the Postgres volume and restart: `docker compose down -v && docker compose up -d`.
-
-3. **No baseline created** — Check `docker compose logs scanner` for database connection errors. Ensure Postgres is healthy: `docker compose ps`.
-
-4. **No Telegram alerts** — Verify `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` are set. Note: the scanner container is on an internal network by default. If you need Telegram alerts, add `fim-external` to the scanner's networks in `docker-compose.yml`.
-
-5. **"Permission denied" in scanner logs** — Expected for files like `/etc/shadow`. They are recorded as `UNREADABLE` status without crashing.
-
-6. **Dashboard shows "Connection lost"** — The WebSocket proxy may not be configured. Verify nginx is running and `/ws/live` location block is present in `nginx.conf`.
-
-7. **Dashboard can't reach API** — Check that the API container is running and that nginx proxies `/api/` correctly. Run `docker compose ps` and `docker compose logs api`.
-
-8. **Scanner can't read host files** — The read-only bind mounts (`/etc:/monitored/etc:ro`) require the host paths to exist. This project is designed for Linux hosts.
-
-9. **Scans are slow** — Reduce directory scope in `config.yaml` or the `monitored_files` table. Large directories like `/usr/bin/` add many files. Increase `SCAN_INTERVAL_SECONDS`.
-
-10. **Baseline reset denied** — The reset endpoint requires the logged-in user to re-enter their password. Ensure the `BASELINE_CONFIRMATION_TOKEN` in `.env` matches between the API and scanner containers.
+- **Данные** — хранятся только локально, никогда не отправляются на внешние серверы
+- **Пароли** — каждая установка получает уникальные случайные пароли (генерирует `install.sh`)
+- **JWT** — HS256, токены доступа 1 час, refresh-токены 7 дней
+- **Пароли пользователей** — bcrypt, cost factor 12
+- **Сеть** — PostgreSQL и сканер изолированы во внутренней Docker-сети без интернета
+- **Файловая система** — сканер читает файлы только в режиме read-only
+- **SQL** — параметризованные запросы, SQL-инъекции невозможны
+- **Аудит** — все действия пользователей (вход, добавление файлов, подтверждение алертов) записываются в лог
 
 ---
 
-## Security Design
+## API (для разработчиков)
 
-- **Secrets** — All credentials are in `.env` only (git-ignored). Never hardcoded.
-- **SQL** — Parameterised queries everywhere. No string interpolation in SQL.
-- **Passwords** — bcrypt with cost factor 12.
-- **JWT** — HS256, 1-hour access tokens, 7-day refresh tokens. Secret minimum 64 chars.
-- **Scanner** — Runs as non-root UID 1001. All filesystem mounts are read-only.
-- **Network** — Scanner and Postgres are on an isolated internal Docker network with no internet.
-- **Audit** — All user actions (login, file add/remove, baseline reset, alert ack) are logged to `audit_log`.
-- **Logs** — JSON structured, daily rotation with 30-day retention, daily SHA-256 checksums.
-- **Headers** — CSP, HSTS, X-Frame-Options DENY, X-Content-Type-Options nosniff on all responses.
+| Метод | Эндпоинт | Описание |
+|-------|----------|----------|
+| POST | `/api/v1/auth/login` | Получить JWT-токен |
+| POST | `/api/v1/auth/register` | Зарегистрироваться |
+| GET | `/api/v1/files` | Список отслеживаемых файлов |
+| POST | `/api/v1/files/add` | Добавить файл |
+| DELETE | `/api/v1/files/{path}` | Удалить файл из мониторинга |
+| GET | `/api/v1/alerts` | Список алертов (с фильтрами) |
+| PUT | `/api/v1/alerts/{id}/acknowledge` | Подтвердить алерт |
+| POST | `/api/v1/baseline/create` | Создать базовую линию |
+| GET | `/api/v1/baseline/status` | Статус базовой линии |
+| POST | `/api/v1/scan/trigger` | Запустить ручной скан |
+| GET | `/api/v1/stats/summary` | Сводная статистика |
+| WS | `/ws/live` | Поток событий в реальном времени |
+
+Все запросы (кроме login/register) требуют заголовок:
+```
+Authorization: Bearer <ваш_токен>
+```
+
+---
+
+## Устранение неполадок
+
+**Не могу войти в систему**
+→ Убедитесь что контейнеры запущены: `fim status`
+→ Проверьте логи: `fim logs`
+
+**Telegram-уведомления не приходят**
+→ Проверьте токен и Chat ID в Settings → нажмите **Test**
+→ Убедитесь что начали чат с ботом в Telegram
+
+**Дашборд не открывается**
+→ Проверьте что программа запущена: `fim status`
+→ Откройте `http://localhost:8080` (не `https`)
+
+**Нет алертов при изменении файла**
+→ Убедитесь что создана базовая линия (Settings → Create Baseline)
+→ Добавьте файл в Monitored Files
+→ Нажмите Manual Trigger для немедленного скана
+
+**502 Bad Gateway**
+→ Перезапустите все контейнеры: `fim restart`
+
+---
+
+## Обновление
+
+```bash
+fim update
+```
+
+Команда автоматически скачает последнюю версию и пересоберёт контейнеры.
+
+---
+
+## Лицензия
+
+MIT — используйте свободно для личных и коммерческих целей.
