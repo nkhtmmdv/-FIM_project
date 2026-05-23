@@ -568,11 +568,22 @@ async function enableFile(encodedPath) {
 
 async function purgeFile(encodedPath) {
     if (!confirm('Permanently delete this file from monitoring?\nAll history and baseline data will be removed.')) return;
-    var res = await api('/files/purge/' + encodedPath, { method: 'POST' });
-    if (res && res.ok) {
-        showToast('File permanently removed', 'success');
-        loadSettings();
+    try {
+        var r = await fetch(API + '/files/purge/' + encodedPath, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }
+        });
+        if (r.ok) {
+            showToast('File permanently removed', 'success');
+        } else {
+            var body = null;
+            try { body = await r.json(); } catch(e) {}
+            showToast('Error ' + r.status + ': ' + (body && body.detail ? body.detail : 'failed'), 'error');
+        }
+    } catch (e) {
+        showToast('Request failed: ' + e.message, 'error');
     }
+    loadSettings();
 }
 
 /* =========================================================
