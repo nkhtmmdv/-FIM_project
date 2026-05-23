@@ -72,10 +72,11 @@ systemctl enable "${SERVICE_NAME}"
 echo "[OK] Autostart registered (${SERVICE_FILE})"
 
 # ── 4. First launch ────────────────────────────────────────────────────────
-echo "[..] Starting FIM Sentinel..."
-systemctl start "${SERVICE_NAME}"
-sleep 3
-systemctl status "${SERVICE_NAME}" --no-pager -l
+echo "[..] Building and starting FIM Sentinel (this may take 5-10 minutes on first run)..."
+cd "${INSTALL_DIR}"
+docker compose up -d --build
+echo "[OK] FIM Sentinel started"
+systemctl start "${SERVICE_NAME}" 2>/dev/null || true
 
 # ── 5. Global 'fim' command ────────────────────────────────────────────────
 cat > /usr/local/bin/fim << EOF
