@@ -490,13 +490,9 @@ async function loadSettings() {
         _updateTokenIndicator(tokenIsSet);
     }
 
-    // Load global/SMTP settings from DB
+    // Load global settings from DB
     var cfg = await api('/settings');
     if (cfg) {
-        if (cfg.smtp_host) document.getElementById('smtpHost').value = cfg.smtp_host;
-        if (cfg.smtp_port) document.getElementById('smtpPort').value = cfg.smtp_port;
-        if (cfg.smtp_user) document.getElementById('smtpUser').value = cfg.smtp_user;
-        if (cfg.alert_email_to) document.getElementById('smtpTo').value = cfg.alert_email_to;
         if (cfg.scan_interval_seconds) {
             var secs = parseInt(cfg.scan_interval_seconds, 10);
             scanInterval = secs;
@@ -880,18 +876,6 @@ async function testTelegramPersonal() {
     }
 }
 
-/**
- * Save SMTP credentials to DB then send a test email.
- */
-async function testEmail() {
-    await saveSettings([
-        { key: 'smtp_host',      value: document.getElementById('smtpHost').value.trim() },
-        { key: 'smtp_port',      value: document.getElementById('smtpPort').value.trim() },
-        { key: 'smtp_user',      value: document.getElementById('smtpUser').value.trim() },
-        { key: 'alert_email_to', value: document.getElementById('smtpTo').value.trim() }
-    ]);
-    showToast('SMTP settings saved. Email alerts are now active.', 'success');
-}
 
 /**
  * Save scan toggle settings to DB.

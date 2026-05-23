@@ -85,6 +85,8 @@ def add_file(body: FileAdd, request: Request, user=Depends(current_user)):
         'ON CONFLICT(file_path) DO UPDATE SET is_active=TRUE,severity=EXCLUDED.severity',
         (scan_path, body.severity, user['username']),
     )
+    execute('DELETE FROM baseline_hashes WHERE file_path=%s', (scan_path,))
+    execute('UPDATE file_events SET acknowledged=TRUE WHERE file_path=%s AND acknowledged=FALSE', (scan_path,))
     audit(
         user['username'],
         'file.add',
@@ -96,9 +98,11 @@ def add_file(body: FileAdd, request: Request, user=Depends(current_user)):
 
 @router.delete('/{path:path}')
 def remove_file(path: str, request: Request, user=Depends(current_user)):
-    """Deactivate a monitored file path."""
+    """Deactivate a monitored file path and clean up its baseline + events."""
     target = _to_scan('/' + path)
     execute('UPDATE monitored_files SET is_active=FALSE WHERE file_path=%s', (target,))
+    execute('DELETE FROM baseline_hashes WHERE file_path=%s', (target,))
+    execute('UPDATE file_events SET acknowledged=TRUE WHERE file_path=%s AND acknowledged=FALSE', (target,))
     audit(
         user['username'],
         'file.remove',
