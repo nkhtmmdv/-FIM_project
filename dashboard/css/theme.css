@@ -81,13 +81,7 @@ body::before {
     radial-gradient(ellipse 55% 44% at 50% 100%, rgba(16,185,129,.07) 0%, transparent 50%);
 }
 
-/* Fine grain noise texture */
-body::after {
-  content: '';
-  position: fixed; inset: 0; z-index: -1; pointer-events: none; opacity: .025;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  background-size: 180px 180px;
-}
+/* (noise texture removed — perf) */
 
 /* ---------- Typography ---------- */
 h2 { font-size: 14px; font-weight: 600; color: var(--tx-1); letter-spacing: -.1px; }
@@ -219,7 +213,6 @@ select.input {
    ========================================================== */
 .panel {
   background: var(--surface);
-  backdrop-filter: var(--glass); -webkit-backdrop-filter: var(--glass);
   border: 1px solid var(--border-hi);
   border-radius: var(--r14); padding: 22px;
   box-shadow: 0 0 0 1px rgba(255,255,255,.035) inset, var(--sh-md);
@@ -243,12 +236,12 @@ select.input {
    ========================================================== */
 .card {
   background: var(--surface);
-  backdrop-filter: var(--glass); -webkit-backdrop-filter: var(--glass);
   border: 1px solid var(--border-hi);
   border-radius: var(--r14); padding: 24px;
   position: relative; overflow: hidden;
   transition: transform .36s var(--ease), border-color .22s, box-shadow .36s;
   box-shadow: 0 0 0 1px rgba(255,255,255,.04) inset, var(--sh-md);
+  will-change: transform;
 }
 /* Top accent line */
 .card::before {
@@ -411,8 +404,7 @@ tbody tr.highlight td { background: var(--p-lo); }
    ========================================================== */
 .drawer {
   position: fixed; right: -560px; top: 0; width: 540px; max-width: 100vw; height: 100vh;
-  background: var(--overlay);
-  backdrop-filter: saturate(1.8) blur(28px); -webkit-backdrop-filter: saturate(1.8) blur(28px);
+  background: #0d0d10;
   border-left: 1px solid var(--border-hi);
   box-shadow: -16px 0 70px rgba(0,0,0,.6);
   transition: right .3s var(--ease);
@@ -435,12 +427,12 @@ tbody tr.highlight td { background: var(--p-lo); }
    ========================================================== */
 .modal-backdrop {
   display: none; position: fixed; inset: 0; z-index: 70;
-  background: rgba(0,0,0,.7); backdrop-filter: blur(8px);
+  background: rgba(0,0,0,.75);
   align-items: center; justify-content: center;
 }
 .modal-backdrop.open { display: flex; }
 .modal {
-  background: var(--bg-2);
+  background: #0f0f13;
   border: 1px solid var(--border-hi);
   border-radius: var(--r14); padding: 28px;
   max-width: 440px; width: 90%;
