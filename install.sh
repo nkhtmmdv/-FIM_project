@@ -95,6 +95,21 @@ EOF
 chmod +x /usr/local/bin/fim
 echo "[OK] Global command 'fim' installed — use from anywhere"
 
+# ── 6. Auto-open browser on desktop login ─────────────────────────────────
+AUTOSTART_DIR="/etc/xdg/autostart"
+mkdir -p "${AUTOSTART_DIR}"
+cat > "${AUTOSTART_DIR}/fim-sentinel-browser.desktop" << EOF
+[Desktop Entry]
+Type=Application
+Name=FIM Sentinel Dashboard
+Comment=Open FIM Sentinel dashboard on login
+Exec=bash -c 'sleep 5 && xdg-open http://localhost:8080'
+Icon=security-high
+Terminal=false
+X-GNOME-Autostart-enabled=true
+EOF
+echo "[OK] Browser will open automatically on desktop login"
+
 echo ""
 echo "=== Done! FIM Sentinel is running and will auto-start on boot ==="
 echo "    Dashboard: http://$(hostname -I | awk '{print $1}'):8080"
