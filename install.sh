@@ -17,23 +17,23 @@ ENV_EXAMPLE="${INSTALL_DIR}/.env.example"
 echo "=== FIM Sentinel Installer ==="
 echo "Directory: ${INSTALL_DIR}"
 
-# ── 1. .env ────────────────────────────────────────────────────────────────
+# ── 1. .env — generate unique secrets for every installation ───────────────
 if [ ! -f "${ENV_FILE}" ]; then
-    if [ -f "${ENV_EXAMPLE}" ]; then
-        cp "${ENV_EXAMPLE}" "${ENV_FILE}"
-        echo "[OK] .env created from .env.example — edit it before first run"
-    else
-        cat > "${ENV_FILE}" << 'EOF'
+    # Generate cryptographically random values unique to this machine
+    DB_PASS=$(openssl rand -hex 24)
+    JWT_SEC=$(openssl rand -hex 40)
+
+    cat > "${ENV_FILE}" << EOF
 POSTGRES_USER=fim
-POSTGRES_PASSWORD=changeme
+POSTGRES_PASSWORD=${DB_PASS}
 POSTGRES_DB=fim
-JWT_SECRET=change_this_to_a_long_random_secret_min_32_chars
+JWT_SECRET=${JWT_SEC}
 API_PORT=8000
 HTTP_PORT=8080
 SCAN_INTERVAL_SECONDS=60
 EOF
-        echo "[OK] .env created with defaults — edit passwords before use!"
-    fi
+    chmod 600 "${ENV_FILE}"
+    echo "[OK] .env created with unique random secrets for this machine"
 else
     echo "[--] .env already exists, skipping"
 fi
