@@ -105,33 +105,40 @@ def add_file(body: FileAdd, request: Request, user=Depends(current_user)):
 def remove_file(path: str, request: Request, user=Depends(current_user), permanent: bool = False):
     """Deactivate or permanently delete a monitored file path.
 
-    Uses regex slash-normalization on both sides so any historical path
-    variations (single, double or triple slashes) get matched correctly.
+    Matches the row regardless of whether file_path is stored with or
+    without the MONITOR_ROOT prefix and regardless of slash duplication.
     """
-    target = _to_scan('/' + path.lstrip('/'))
-    # Normalized target (collapse multiple slashes to single)
-    norm_target = re.sub(r'/+', '/', target)
-    # Match any row whose path normalises to the same thing
-    where = "regexp_replace(file_path, '/+', '/', 'g') = %s"
+    raw = '/' + path.lstrip('/')                       # e.g. /etc/issue
+    norm = re.sub(r'/+', '/', os.path.normpath(raw))   # /etc/issue
+    with_prefix = re.sub(r'/+', '/', _to_scan(norm))   # /monitored/etc/issue
+    # Match any path variation whose normalised form equals either form
+    where = ("regexp_replace(file_path, '/+', '/', 'g') IN (%s, %s) "
+             "OR file_path IN (%s, %s)")
+    params = (norm, with_prefix, norm, with_prefix)
     if permanent:
-        execute(f'DELETE FROM file_events WHERE {where}', (norm_target,))
-        execute(f'DELETE FROM baseline_hashes WHERE {where}', (norm_target,))
-        deleted = execute_count(f'DELETE FROM monitored_files WHERE {where}', (norm_target,))
+        execute(f'DELETE FROM file_events WHERE {where}', params)
+        execute(f'DELETE FROM baseline_hashes WHERE {where}', params)
+        deleted = execute_count(f'DELETE FROM monitored_files WHERE {where}', params)
         action = 'file.purge'
     else:
-        deleted = execute_count(f'UPDATE monitored_files SET is_active=FALSE WHERE {where}', (norm_target,))
-        execute(f'DELETE FROM baseline_hashes WHERE {where}', (norm_target,))
-        execute(f"UPDATE file_events SET acknowledged=TRUE WHERE {where} AND acknowledged=FALSE", (norm_target,))
+        deleted = execute_count(f'UPDATE monitored_files SET is_active=FALSE WHERE {where}', params)
+        execute(f'DELETE FROM baseline_hashes WHERE {where}', params)
+        execute(f"UPDATE file_events SET acknowledged=TRUE WHERE ({where}) AND acknowledged=FALSE", params)
         action = 'file.remove'
     audit(
         user['username'],
         action,
-        target,
+        with_prefix,
         request.client.host if request.client else None,
     )
     if deleted == 0:
-        raise HTTPException(status_code=404, detail=f'no rows matched path={norm_target!r}')
-    return {'ok': True, 'deleted': deleted, 'normalized': norm_target}
+        # Help diagnose: list candidate paths actually in DB
+        rows = fetch_all('SELECT file_path FROM monitored_files WHERE file_path ILIKE %s LIMIT 5', ('%' + norm.split('/')[-1] + '%',))
+        raise HTTPException(
+            status_code=404,
+            detail=f'no rows matched. tried: {norm!r}, {with_prefix!r}. similar in db: {[r["file_path"] for r in rows]}',
+        )
+    return {'ok': True, 'deleted': deleted, 'tried': [norm, with_prefix]}
 
 
 @router.post('/enable/{path:path}')
