@@ -61,7 +61,7 @@ def list_files(
 @router.get('/{path:path}')
 def file_detail(path: str, user=Depends(current_user)):
     """Return a single file and history."""
-    scan_path = _to_scan('/' + path)
+    scan_path = _to_scan('/' + path.lstrip('/'))
     f = fetch_one(
         'SELECT * FROM monitored_files WHERE file_path=%s',
         (scan_path,),
@@ -103,7 +103,7 @@ def add_file(body: FileAdd, request: Request, user=Depends(current_user)):
 @router.delete('/{path:path}')
 def remove_file(path: str, request: Request, user=Depends(current_user), permanent: bool = False):
     """Deactivate or permanently delete a monitored file path."""
-    target = _to_scan('/' + path)
+    target = _to_scan('/' + path.lstrip('/'))
     if permanent:
         execute('DELETE FROM file_events WHERE file_path=%s', (target,))
         execute('DELETE FROM baseline_hashes WHERE file_path=%s', (target,))
@@ -126,7 +126,7 @@ def remove_file(path: str, request: Request, user=Depends(current_user), permane
 @router.post('/enable/{path:path}')
 def enable_file(path: str, request: Request, user=Depends(current_user)):
     """Re-activate a disabled monitored file path."""
-    target = _to_scan('/' + path)
+    target = _to_scan('/' + path.lstrip('/'))
     execute('UPDATE monitored_files SET is_active=TRUE WHERE file_path=%s', (target,))
     audit(
         user['username'],
