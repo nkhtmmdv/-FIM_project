@@ -169,10 +169,13 @@
 <div id="page-history" class="page">
   <div class="container" style="padding-top:24px">
     <div class="panel">
-      <h2 class="mb-8">Scan History</h2>
+      <div class="row" style="justify-content:space-between;align-items:center" class="mb-8">
+        <h2>Scan History</h2>
+        <button class="btn danger sm" onclick="clearHistory()" title="Permanently delete all scan history">Clear All</button>
+      </div>
       <table>
         <thead><tr>
-          <th>#</th><th>Started</th><th>Duration</th><th>Files Scanned</th><th>Changes</th><th>Status</th><th>Triggered By</th>
+          <th>#</th><th>Started</th><th>Duration</th><th>Files Scanned</th><th>Changes</th><th>Status</th><th>Triggered By</th><th></th>
         </tr></thead>
         <tbody id="historyBody"></tbody>
       </table>
@@ -284,8 +287,8 @@
 </div>
 
 <!-- Scripts -->
-<script src="/js/websocket.js?v=9"></script>
-<script src="/js/charts.js?v=9"></script>
-<script src="/js/app.js?v=9"></script>
+<script src="/js/websocket.js?v=11"></script>
+<script src="/js/charts.js?v=11"></script>
+<script src="/js/app.js?v=11"></script>
 </body>
 </html>

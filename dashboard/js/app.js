@@ -421,17 +421,64 @@ async function loadHistory() {
     var scans = await api('/scan/history');
     if (!scans) return;
     var body = document.getElementById('historyBody');
+    if (!scans.length) {
+        body.innerHTML = '<tr><td colspan="8" style="color:var(--muted);text-align:center;padding:20px">No scan history</td></tr>';
+        return;
+    }
     body.innerHTML = scans.map(function (s) {
         var changes = (s.files_modified || 0) + (s.files_deleted || 0) + (s.files_added || 0);
-        return '<tr onclick="loadScanDetail(' + s.id + ')">' +
+        return '<tr onclick="loadScanDetail(' + s.id + ')" style="cursor:pointer">' +
             '<td>#' + s.id + '</td>' +
             '<td>' + fmtTime(s.started_at) + '</td>' +
             '<td>' + (s.duration_ms != null ? s.duration_ms + 'ms' : '--') + '</td>' +
             '<td>' + (s.files_scanned || 0) + '</td>' +
             '<td>' + changes + '</td>' +
             '<td><span class="badge ' + (s.status || '') + '">' + (s.status || '') + '</span></td>' +
-            '<td>' + esc(s.triggered_by) + '</td></tr>';
+            '<td>' + esc(s.triggered_by) + '</td>' +
+            '<td style="text-align:right;white-space:nowrap">' +
+            '<button class="btn sm danger" title="Delete this scan run" onclick="event.stopPropagation();deleteScan(' + s.id + ')">Delete</button>' +
+            '</td></tr>';
     }).join('');
+}
+
+/**
+ * Delete a single scan run from history.
+ * @param {number} scanId - Scan run ID
+ */
+async function deleteScan(scanId) {
+    if (!confirm('Delete scan #' + scanId + ' and its events?')) return;
+    var r = await fetch(API + '/scan/history/' + scanId, {
+        method: 'DELETE',
+        headers: { 'Authorization': 'Bearer ' + token }
+    });
+    if (r.ok) {
+        showToast('Scan #' + scanId + ' deleted', 'success');
+    } else {
+        var d = null; try { d = await r.json(); } catch(e) {}
+        showToast('Delete failed: ' + (d && d.detail ? d.detail : r.status), 'error');
+    }
+    document.getElementById('scanDetail').style.display = 'none';
+    loadHistory();
+}
+
+/**
+ * Clear ALL scan history.
+ */
+async function clearHistory() {
+    if (!confirm('Permanently delete ALL scan history?\nThis cannot be undone.')) return;
+    var r = await fetch(API + '/scan/history', {
+        method: 'DELETE',
+        headers: { 'Authorization': 'Bearer ' + token }
+    });
+    if (r.ok) {
+        var d = null; try { d = await r.json(); } catch(e) {}
+        showToast('Cleared ' + (d && d.deleted != null ? d.deleted : '') + ' scan runs', 'success');
+    } else {
+        var err = null; try { err = await r.json(); } catch(e) {}
+        showToast('Clear failed: ' + (err && err.detail ? err.detail : r.status), 'error');
+    }
+    document.getElementById('scanDetail').style.display = 'none';
+    loadHistory();
 }
 
 /**
