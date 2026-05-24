@@ -567,28 +567,18 @@ async function enableFile(encodedPath) {
 }
 
 async function purgeFile(encodedPath) {
-    var url = API + '/files/' + encodedPath + '?permanent=true';
-    console.log('[PURGE] DELETE', url);
-    var r;
-    try {
-        r = await fetch(url, {
-            method: 'DELETE',
-            headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }
-        });
-    } catch (e) {
-        console.error('[PURGE] network error', e);
-        showToast('Network error: ' + e.message, 'error');
-        return;
-    }
-    var bodyText = '';
-    try { bodyText = await r.text(); } catch(e) {}
-    console.log('[PURGE] status:', r.status, 'body:', bodyText);
+    if (!confirm('Permanently delete this file from monitoring?\nAll history and baseline data will be removed.')) return;
+    var r = await fetch(API + '/files/' + encodedPath + '?permanent=true', {
+        method: 'DELETE',
+        headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }
+    });
     if (r.ok) {
-        showToast('Deleted (200): ' + decodeURIComponent(encodedPath), 'success');
+        showToast('File permanently removed', 'success');
     } else {
-        showToast('HTTP ' + r.status + ' — ' + (bodyText.slice(0, 200) || 'no body'), 'error');
+        var d = null; try { d = await r.json(); } catch(e) {}
+        showToast('Delete failed: ' + (d && d.detail ? d.detail : r.status), 'error');
     }
-    setTimeout(loadSettings, 400);
+    loadSettings();
 }
 
 /* =========================================================

@@ -132,13 +132,8 @@ def remove_file(path: str, request: Request, user=Depends(current_user), permane
         request.client.host if request.client else None,
     )
     if deleted == 0:
-        # Help diagnose: list candidate paths actually in DB
-        rows = fetch_all('SELECT file_path FROM monitored_files WHERE file_path ILIKE %s LIMIT 5', ('%' + norm.split('/')[-1] + '%',))
-        raise HTTPException(
-            status_code=404,
-            detail=f'no rows matched. tried: {norm!r}, {with_prefix!r}. similar in db: {[r["file_path"] for r in rows]}',
-        )
-    return {'ok': True, 'deleted': deleted, 'tried': [norm, with_prefix]}
+        raise HTTPException(status_code=404, detail='file not found')
+    return {'ok': True, 'deleted': deleted}
 
 
 @router.post('/enable/{path:path}')
