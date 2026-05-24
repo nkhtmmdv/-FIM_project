@@ -447,17 +447,17 @@ async function loadHistory() {
  */
 async function deleteScan(scanId) {
     if (!confirm('Delete scan #' + scanId + ' and its events?')) return;
-    var r = await fetch(API + '/scan/history/' + scanId, {
+    var url = API + '/scan/history/' + scanId;
+    console.log('[DEL SCAN]', url);
+    var r = await fetch(url, {
         method: 'DELETE',
         headers: { 'Authorization': 'Bearer ' + token }
     });
-    if (r.ok) {
-        showToast('Scan #' + scanId + ' deleted', 'success');
-    } else {
-        var d = null; try { d = await r.json(); } catch(e) {}
-        showToast('Delete failed: ' + (d && d.detail ? d.detail : r.status), 'error');
-    }
-    document.getElementById('scanDetail').style.display = 'none';
+    var body = ''; try { body = await r.text(); } catch(e) {}
+    console.log('[DEL SCAN] status:', r.status, 'body:', body);
+    if (r.ok) showToast('Scan #' + scanId + ' deleted', 'success');
+    else showToast('HTTP ' + r.status + ': ' + (body.slice(0, 200) || 'failed'), 'error');
+    var sd = document.getElementById('scanDetail'); if (sd) sd.style.display = 'none';
     loadHistory();
 }
 
@@ -466,18 +466,21 @@ async function deleteScan(scanId) {
  */
 async function clearHistory() {
     if (!confirm('Permanently delete ALL scan history?\nThis cannot be undone.')) return;
-    var r = await fetch(API + '/scan/history', {
+    var url = API + '/scan/history';
+    console.log('[CLEAR HIST]', url);
+    var r = await fetch(url, {
         method: 'DELETE',
         headers: { 'Authorization': 'Bearer ' + token }
     });
+    var body = ''; try { body = await r.text(); } catch(e) {}
+    console.log('[CLEAR HIST] status:', r.status, 'body:', body);
     if (r.ok) {
-        var d = null; try { d = await r.json(); } catch(e) {}
-        showToast('Cleared ' + (d && d.deleted != null ? d.deleted : '') + ' scan runs', 'success');
+        var d = null; try { d = JSON.parse(body); } catch(e) {}
+        showToast('Cleared ' + (d && d.deleted != null ? d.deleted : '?') + ' scan runs', 'success');
     } else {
-        var err = null; try { err = await r.json(); } catch(e) {}
-        showToast('Clear failed: ' + (err && err.detail ? err.detail : r.status), 'error');
+        showToast('HTTP ' + r.status + ': ' + (body.slice(0, 200) || 'failed'), 'error');
     }
-    document.getElementById('scanDetail').style.display = 'none';
+    var sd = document.getElementById('scanDetail'); if (sd) sd.style.display = 'none';
     loadHistory();
 }
 
