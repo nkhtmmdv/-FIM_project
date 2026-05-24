@@ -568,22 +568,17 @@ async function enableFile(encodedPath) {
 }
 
 async function purgeFile(filePath) {
-    if (!confirm('Permanently delete this file from monitoring?\nAll history and baseline data will be removed.')) return;
-    try {
-        var r = await fetch(API + '/files/purge', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-            body: JSON.stringify({ file_path: filePath })
-        });
-        if (r.ok) {
-            showToast('File permanently removed', 'success');
-        } else {
-            var data = null;
-            try { data = await r.json(); } catch(e) {}
-            showToast('Error ' + r.status + ': ' + (data && data.detail ? data.detail : 'failed'), 'error');
-        }
-    } catch (e) {
-        showToast('Request failed: ' + e.message, 'error');
+    var r = await fetch(API + '/files/purge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+        body: JSON.stringify({ file_path: filePath })
+    });
+    if (r.ok) {
+        showToast('Deleted: ' + filePath, 'success');
+    } else {
+        var d = null; try { d = await r.json(); } catch(e) {}
+        var detail = d && d.detail ? (Array.isArray(d.detail) ? JSON.stringify(d.detail) : d.detail) : r.status;
+        showToast('Delete failed: ' + detail, 'error');
     }
     loadSettings();
 }

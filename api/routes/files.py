@@ -6,6 +6,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from auth import current_user
 from database import audit, execute, fetch_all, fetch_one
 from models.file_record import FileAdd
+from pydantic import BaseModel as _BaseModel
+
+class _PurgeBody(_BaseModel):
+    file_path: str
 
 router = APIRouter(prefix='/files', tags=['files'])
 MONITOR_ROOT = os.getenv('MONITOR_ROOT', '/monitored')
@@ -127,7 +131,7 @@ def enable_file(path: str, request: Request, user=Depends(current_user)):
 
 
 @router.post('/purge')
-def purge_file(body: FileAdd, request: Request, user=Depends(current_user)):
+def purge_file(body: _PurgeBody, request: Request, user=Depends(current_user)):
     """Permanently delete a file from monitoring, baseline and events."""
     target = _to_scan(os.path.normpath(body.file_path))
     execute('DELETE FROM file_events WHERE file_path=%s', (target,))
