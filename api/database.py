@@ -67,6 +67,15 @@ def execute(sql: str, params: Sequence[Any] | None = None) -> None:
         cur.execute(sql, params)
 
 
+def execute_count(sql: str, params: Sequence[Any] | None = None) -> int:
+    """Execute parameterised SQL and return affected row count."""
+    if params is None:
+        params = []
+    with cursor() as cur:
+        cur.execute(sql, params)
+        return cur.rowcount
+
+
 def audit(username: str, action: str, target: str | None, ip: str | None) -> None:
     """Write an audit log entry."""
     execute(

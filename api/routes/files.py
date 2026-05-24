@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 import os
+import re
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from auth import current_user
-from database import audit, execute, fetch_all, fetch_one
+from database import audit, execute, execute_count, fetch_all, fetch_one
 from models.file_record import FileAdd
 from pydantic import BaseModel as _BaseModel
 
@@ -102,17 +103,25 @@ def add_file(body: FileAdd, request: Request, user=Depends(current_user)):
 
 @router.delete('/{path:path}')
 def remove_file(path: str, request: Request, user=Depends(current_user), permanent: bool = False):
-    """Deactivate or permanently delete a monitored file path."""
+    """Deactivate or permanently delete a monitored file path.
+
+    Uses regex slash-normalization on both sides so any historical path
+    variations (single, double or triple slashes) get matched correctly.
+    """
     target = _to_scan('/' + path.lstrip('/'))
+    # Normalized target (collapse multiple slashes to single)
+    norm_target = re.sub(r'/+', '/', target)
+    # Match any row whose path normalises to the same thing
+    where = "regexp_replace(file_path, '/+', '/', 'g') = %s"
     if permanent:
-        execute('DELETE FROM file_events WHERE file_path=%s', (target,))
-        execute('DELETE FROM baseline_hashes WHERE file_path=%s', (target,))
-        execute('DELETE FROM monitored_files WHERE file_path=%s', (target,))
+        execute(f'DELETE FROM file_events WHERE {where}', (norm_target,))
+        execute(f'DELETE FROM baseline_hashes WHERE {where}', (norm_target,))
+        deleted = execute_count(f'DELETE FROM monitored_files WHERE {where}', (norm_target,))
         action = 'file.purge'
     else:
-        execute('UPDATE monitored_files SET is_active=FALSE WHERE file_path=%s', (target,))
-        execute('DELETE FROM baseline_hashes WHERE file_path=%s', (target,))
-        execute('UPDATE file_events SET acknowledged=TRUE WHERE file_path=%s AND acknowledged=FALSE', (target,))
+        deleted = execute_count(f'UPDATE monitored_files SET is_active=FALSE WHERE {where}', (norm_target,))
+        execute(f'DELETE FROM baseline_hashes WHERE {where}', (norm_target,))
+        execute(f"UPDATE file_events SET acknowledged=TRUE WHERE {where} AND acknowledged=FALSE", (norm_target,))
         action = 'file.remove'
     audit(
         user['username'],
@@ -120,7 +129,9 @@ def remove_file(path: str, request: Request, user=Depends(current_user), permane
         target,
         request.client.host if request.client else None,
     )
-    return {'ok': True}
+    if deleted == 0:
+        raise HTTPException(status_code=404, detail=f'no rows matched path={norm_target!r}')
+    return {'ok': True, 'deleted': deleted, 'normalized': norm_target}
 
 
 @router.post('/enable/{path:path}')
