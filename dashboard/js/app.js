@@ -476,8 +476,7 @@ async function loadSettings() {
                 var toggleBtn = isActive
                     ? '<button class="btn sm" title="Disable monitoring" onclick="disableFile(\'' + enc + '\')" style="color:#f59e0b;border-color:rgba(245,158,11,.25)">Pause</button>'
                     : '<button class="btn sm" title="Enable monitoring" onclick="enableFile(\'' + enc + '\')" style="color:#4ade80;border-color:rgba(74,222,128,.25)">Resume</button>';
-                var safePath = f.file_path.replace(/'/g, "\\'");
-                var deleteBtn = '<button class="btn sm danger" title="Permanently remove from monitoring" onclick="purgeFile(\'' + safePath + '\')" style="margin-left:4px">Delete</button>';
+                var deleteBtn = '<button class="btn sm danger" title="Permanently remove from monitoring" onclick="purgeFile(\'' + enc + '\')" style="margin-left:4px">Delete</button>';
                 return '<tr style="opacity:' + (isActive ? '1' : '0.6') + '">' +
                     '<td style="font-family:monospace;font-size:12px;word-break:break-all">' + dot + esc(f.file_path) + '</td>' +
                     '<td><span class="badge ' + (f.severity || 'INFO') + '">' + (f.severity || 'INFO') + '</span></td>' +
@@ -567,19 +566,9 @@ async function enableFile(encodedPath) {
     loadSettings();
 }
 
-async function purgeFile(filePath) {
-    var r = await fetch(API + '/files/purge', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-        body: JSON.stringify({ file_path: filePath })
-    });
-    if (r.ok) {
-        showToast('Deleted: ' + filePath, 'success');
-    } else {
-        var d = null; try { d = await r.json(); } catch(e) {}
-        var detail = d && d.detail ? (Array.isArray(d.detail) ? JSON.stringify(d.detail) : d.detail) : r.status;
-        showToast('Delete failed: ' + detail, 'error');
-    }
+async function purgeFile(encodedPath) {
+    await api('/files/' + encodedPath + '?permanent=true', { method: 'DELETE' });
+    showToast('File permanently removed', 'success');
     loadSettings();
 }
 

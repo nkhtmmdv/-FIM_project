@@ -101,15 +101,22 @@ def add_file(body: FileAdd, request: Request, user=Depends(current_user)):
 
 
 @router.delete('/{path:path}')
-def remove_file(path: str, request: Request, user=Depends(current_user)):
-    """Deactivate a monitored file path and clean up its baseline + events."""
+def remove_file(path: str, request: Request, user=Depends(current_user), permanent: bool = False):
+    """Deactivate or permanently delete a monitored file path."""
     target = _to_scan('/' + path)
-    execute('UPDATE monitored_files SET is_active=FALSE WHERE file_path=%s', (target,))
-    execute('DELETE FROM baseline_hashes WHERE file_path=%s', (target,))
-    execute('UPDATE file_events SET acknowledged=TRUE WHERE file_path=%s AND acknowledged=FALSE', (target,))
+    if permanent:
+        execute('DELETE FROM file_events WHERE file_path=%s', (target,))
+        execute('DELETE FROM baseline_hashes WHERE file_path=%s', (target,))
+        execute('DELETE FROM monitored_files WHERE file_path=%s', (target,))
+        action = 'file.purge'
+    else:
+        execute('UPDATE monitored_files SET is_active=FALSE WHERE file_path=%s', (target,))
+        execute('DELETE FROM baseline_hashes WHERE file_path=%s', (target,))
+        execute('UPDATE file_events SET acknowledged=TRUE WHERE file_path=%s AND acknowledged=FALSE', (target,))
+        action = 'file.remove'
     audit(
         user['username'],
-        'file.remove',
+        action,
         target,
         request.client.host if request.client else None,
     )
