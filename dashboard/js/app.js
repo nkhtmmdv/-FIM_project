@@ -567,9 +567,28 @@ async function enableFile(encodedPath) {
 }
 
 async function purgeFile(encodedPath) {
-    await api('/files/' + encodedPath + '?permanent=true', { method: 'DELETE' });
-    showToast('File permanently removed', 'success');
-    loadSettings();
+    var url = API + '/files/' + encodedPath + '?permanent=true';
+    console.log('[PURGE] DELETE', url);
+    var r;
+    try {
+        r = await fetch(url, {
+            method: 'DELETE',
+            headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }
+        });
+    } catch (e) {
+        console.error('[PURGE] network error', e);
+        showToast('Network error: ' + e.message, 'error');
+        return;
+    }
+    var bodyText = '';
+    try { bodyText = await r.text(); } catch(e) {}
+    console.log('[PURGE] status:', r.status, 'body:', bodyText);
+    if (r.ok) {
+        showToast('Deleted (200): ' + decodeURIComponent(encodedPath), 'success');
+    } else {
+        showToast('HTTP ' + r.status + ' — ' + (bodyText.slice(0, 200) || 'no body'), 'error');
+    }
+    setTimeout(loadSettings, 400);
 }
 
 /* =========================================================
