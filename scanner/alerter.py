@@ -112,10 +112,12 @@ def dispatch(events: List[Dict[str, object]]) -> None:
         logging.error(f'[alerter] DB error loading user creds: {e}')
         rows = []
 
+    seen_chats: set = set()
     for row in rows:
         tok  = (row['telegram_bot_token'] or '').strip()
         chat = (row['telegram_chat_id']   or '').strip()
-        if tok and chat:
+        if tok and chat and chat not in seen_chats:
+            seen_chats.add(chat)
             logging.info(f'[alerter] dispatch to chat={chat} token_prefix={tok[:12]}...')
             _send_to(tok, chat, events)
             sent = True
@@ -155,10 +157,12 @@ def send_shutdown_alert(reason: str = 'shutdown') -> None:
         f"⚠️ If this was not planned, investigate immediately!"
     )
 
+    seen_chats: set = set()
     for row in rows:
         tok = (row['telegram_bot_token'] or '').strip()
         chat = (row['telegram_chat_id'] or '').strip()
-        if tok and chat:
+        if tok and chat and chat not in seen_chats:
+            seen_chats.add(chat)
             try:
                 requests.post(
                     TELEGRAM_URL.format(token=tok),
