@@ -436,7 +436,7 @@ async function loadHistory() {
             '<td><span class="badge ' + (s.status || '') + '">' + (s.status || '') + '</span></td>' +
             '<td>' + esc(s.triggered_by) + '</td>' +
             '<td style="text-align:right;white-space:nowrap">' +
-            '<button class="btn sm danger" title="Delete this scan run" onclick="event.stopPropagation();deleteScan(' + s.id + ')">Delete</button>' +
+            '<button class="btn sm danger" title="Delete this scan run" onclick="deleteScan(event,' + s.id + ')">Delete</button>' +
             '</td></tr>';
     }).join('');
 }
@@ -445,18 +445,12 @@ async function loadHistory() {
  * Delete a single scan run from history.
  * @param {number} scanId - Scan run ID
  */
-async function deleteScan(scanId) {
+async function deleteScan(ev, scanId) {
+    if (ev) ev.stopPropagation();
     if (!confirm('Delete scan #' + scanId + ' and its events?')) return;
-    var url = API + '/scan/history/' + scanId;
-    console.log('[DEL SCAN]', url);
-    var r = await fetch(url, {
-        method: 'DELETE',
-        headers: { 'Authorization': 'Bearer ' + token }
-    });
-    var body = ''; try { body = await r.text(); } catch(e) {}
-    console.log('[DEL SCAN] status:', r.status, 'body:', body);
-    if (r.ok) showToast('Scan #' + scanId + ' deleted', 'success');
-    else showToast('HTTP ' + r.status + ': ' + (body.slice(0, 200) || 'failed'), 'error');
+    var res = await api('/scan/history/' + scanId, { method: 'DELETE' });
+    if (res && res.ok) showToast('Scan #' + scanId + ' deleted', 'success');
+    else showToast('Delete failed: ' + (res && res.detail ? res.detail : 'request failed'), 'error');
     var sd = document.getElementById('scanDetail'); if (sd) sd.style.display = 'none';
     loadHistory();
 }
@@ -466,20 +460,9 @@ async function deleteScan(scanId) {
  */
 async function clearHistory() {
     if (!confirm('Permanently delete ALL scan history?\nThis cannot be undone.')) return;
-    var url = API + '/scan/history';
-    console.log('[CLEAR HIST]', url);
-    var r = await fetch(url, {
-        method: 'DELETE',
-        headers: { 'Authorization': 'Bearer ' + token }
-    });
-    var body = ''; try { body = await r.text(); } catch(e) {}
-    console.log('[CLEAR HIST] status:', r.status, 'body:', body);
-    if (r.ok) {
-        var d = null; try { d = JSON.parse(body); } catch(e) {}
-        showToast('Cleared ' + (d && d.deleted != null ? d.deleted : '?') + ' scan runs', 'success');
-    } else {
-        showToast('HTTP ' + r.status + ': ' + (body.slice(0, 200) || 'failed'), 'error');
-    }
+    var res = await api('/scan/history', { method: 'DELETE' });
+    if (res && res.ok) showToast('Cleared ' + (res.deleted != null ? res.deleted : '?') + ' scan runs', 'success');
+    else showToast('Clear failed: ' + (res && res.detail ? res.detail : 'request failed'), 'error');
     var sd = document.getElementById('scanDetail'); if (sd) sd.style.display = 'none';
     loadHistory();
 }
