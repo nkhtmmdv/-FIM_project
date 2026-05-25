@@ -5,11 +5,22 @@ import signal
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Event, Thread
 from urllib.parse import urlparse
+import alerter
 import db as _db
+import requests
 import scanner
 from logger import write_daily_checksum
 STOP = Event()
 LAST_SCAN_ID = 0
+
+def _heartbeat_sender():
+    """Send periodic heartbeat to API to prove we're alive."""
+    while not STOP.is_set():
+        try:
+            requests.post('http://api:8000/api/v1/health/scanner-heartbeat', timeout=5)
+        except Exception:
+            pass  # API might be down, keep trying
+        STOP.wait(60)  # Heartbeat every 60 seconds
 
 class Handler(BaseHTTPRequestHandler):
     """Minimal internal control API for scanner."""
@@ -46,6 +57,11 @@ class Handler(BaseHTTPRequestHandler):
 def _signal(signum: int, frame: object) -> None:
     """Handle graceful shutdown signals."""
     STOP.set()
+    # Send emergency alert before shutting down
+    try:
+        alerter.send_shutdown_alert('stopped')
+    except Exception:
+        pass
     write_daily_checksum()
 def serve() -> None:
     """Run internal HTTP server."""
@@ -58,6 +74,7 @@ def main() -> None:
     signal.signal(signal.SIGTERM, _signal)
     signal.signal(signal.SIGINT, _signal)
     Thread(target=serve, daemon=True).start()
+    Thread(target=_heartbeat_sender, daemon=True).start()
     while not STOP.is_set():
         interval = _db.get_scan_interval()
         try:

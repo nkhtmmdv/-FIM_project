@@ -116,8 +116,50 @@ app.include_router(settings.router, prefix='/api/v1')
 app.include_router(profile.router)
 
 
+def _send_api_shutdown_alert():
+    """Send emergency alert when API shuts down."""
+    try:
+        import requests
+        from database import fetch_all
+        rows = fetch_all(
+            "SELECT telegram_bot_token, telegram_chat_id FROM users "
+            "WHERE telegram_bot_token IS NOT NULL AND telegram_bot_token != '' "
+            "  AND telegram_chat_id  IS NOT NULL AND telegram_chat_id  != ''"
+        )
+        import socket
+        try:
+            host = socket.gethostname()
+        except Exception:
+            host = 'unknown'
+        from datetime import datetime, timezone
+        text = (
+            f"🛑 *FIM API SHUTDOWN ALERT* 🛑\n\n"
+            f"🔴 API service was *stopped*\n"
+            f"🕐 {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}\n"
+            f"🖥 Host: `{host}`\n\n"
+            f"⚠️ If this was not planned, investigate immediately!"
+        )
+        for row in rows:
+            tok = (row['telegram_bot_token'] or '').strip()
+            chat = (row['telegram_chat_id'] or '').strip()
+            if tok and chat:
+                try:
+                    requests.post(
+                        f'https://api.telegram.org/bot{tok}/sendMessage',
+                        json={'chat_id': chat, 'text': text, 'parse_mode': 'Markdown'},
+                        timeout=5
+                    )
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+
 def _term(signum: int, frame: object) -> None:
-    """Handle termination signal."""
+    """Handle termination signal with alert."""
+    _send_api_shutdown_alert()
     raise SystemExit(0)
 
+
 signal.signal(signal.SIGTERM, _term)
+signal.signal(signal.SIGINT, _term)

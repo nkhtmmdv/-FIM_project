@@ -1,10 +1,73 @@
 """Stats and scan routes."""
 from __future__ import annotations
 import requests
+import threading
+import time
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request
 from auth import current_user
 from database import audit, cursor, fetch_all, fetch_one
-router=APIRouter(tags=['stats'])
+
+router = APIRouter(tags=['stats'])
+
+# Heartbeat tracking for watchdog
+_last_scanner_heartbeat = time.time()
+_heartbeat_lock = threading.Lock()
+
+def _check_scanner_watchdog():
+    """Background thread: alert if scanner heartbeat missing for >5 minutes."""
+    global _last_scanner_heartbeat
+    while True:
+        time.sleep(60)  # Check every minute
+        with _heartbeat_lock:
+            elapsed = time.time() - _last_scanner_heartbeat
+        if elapsed > 300:  # 5 minutes
+            try:
+                # Send alert only once per downtime
+                rows = fetch_all(
+                    "SELECT telegram_bot_token, telegram_chat_id FROM users "
+                    "WHERE telegram_bot_token IS NOT NULL AND telegram_bot_token != '' "
+                    "  AND telegram_chat_id  IS NOT NULL AND telegram_chat_id  != ''"
+                )
+                import socket
+                try:
+                    host = socket.gethostname()
+                except Exception:
+                    host = 'unknown'
+                text = (
+                    f"🚨 *FIM WATCHDOG ALERT* 🚨\n\n"
+                    f"🔴 Scanner is *OFFLINE*\n"
+                    f"⏱ Missing for: {int(elapsed/60)} minutes\n"
+                    f"🕐 {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}\n"
+                    f"🖥 Host: `{host}`\n\n"
+                    f"⚠️ Check if scanner container is running!"
+                )
+                for row in rows:
+                    tok = (row['telegram_bot_token'] or '').strip()
+                    chat = (row['telegram_chat_id'] or '').strip()
+                    if tok and chat:
+                        try:
+                            requests.post(
+                                f'https://api.telegram.org/bot{tok}/sendMessage',
+                                json={'chat_id': chat, 'text': text, 'parse_mode': 'Markdown'},
+                                timeout=5
+                            )
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+
+# Start watchdog thread
+threading.Thread(target=_check_scanner_watchdog, daemon=True).start()
+
+
+@router.post('/health/scanner-heartbeat')
+def scanner_heartbeat():
+    """Receive heartbeat from scanner service."""
+    global _last_scanner_heartbeat
+    with _heartbeat_lock:
+        _last_scanner_heartbeat = time.time()
+    return {'ok': True}
 @router.get('/stats/summary')
 def summary(user=Depends(current_user)):
     """Return dashboard summary."""

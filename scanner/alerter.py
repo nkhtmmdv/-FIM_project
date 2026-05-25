@@ -125,6 +125,50 @@ def dispatch(events: List[Dict[str, object]]) -> None:
     send_email(events)
 
 
+def send_shutdown_alert(reason: str = 'shutdown') -> None:
+    """Send emergency alert when scanner is stopping (potential tampering)."""
+    try:
+        import db as scanner_db
+        with scanner_db.conn_cursor() as cur:
+            cur.execute(
+                "SELECT telegram_bot_token, telegram_chat_id FROM users "
+                "WHERE telegram_bot_token IS NOT NULL AND telegram_bot_token != '' "
+                "  AND telegram_chat_id  IS NOT NULL AND telegram_chat_id  != ''"
+            )
+            rows = cur.fetchall()
+    except Exception as e:
+        logging.error(f'[alerter] DB error loading creds for shutdown alert: {e}')
+        return
+
+    try:
+        host = socket.gethostname()
+    except Exception:
+        host = 'unknown'
+
+    emoji = '🛑' if reason == 'shutdown' else '⚠️'
+    text = (
+        f"{emoji} *FIM SHUTDOWN ALERT* {emoji}\n\n"
+        f"🔴 Scanner service was *{reason}*\n"
+        f"🕐 {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}\n"
+        f"🖥 Host: `{host}`\n\n"
+        f"⚠️ If this was not planned, investigate immediately!"
+    )
+
+    for row in rows:
+        tok = (row['telegram_bot_token'] or '').strip()
+        chat = (row['telegram_chat_id'] or '').strip()
+        if tok and chat:
+            try:
+                requests.post(
+                    TELEGRAM_URL.format(token=tok),
+                    json={'chat_id': chat, 'text': text, 'parse_mode': 'Markdown'},
+                    timeout=10
+                )
+                logging.info(f'[alerter] Shutdown alert sent to chat={chat}')
+            except Exception as e:
+                logging.error(f'[alerter] Failed to send shutdown alert: {e}')
+
+
 def _send_to(token: str, chat: str, events: List[Dict[str, object]]) -> None:
     """Send batched alerts to a single Telegram destination."""
     if not token or not chat:
