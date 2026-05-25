@@ -2,11 +2,9 @@
 from __future__ import annotations
 import os
 import signal
-import logging
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Event, Thread
 from urllib.parse import urlparse
-from urllib.parse import parse_qs
 import alerter
 import db as _db
 import requests
@@ -14,14 +12,6 @@ import scanner
 from logger import write_daily_checksum
 STOP = Event()
 LAST_SCAN_ID = 0
-
-logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
-
-def _verify_host_mount() -> None:
-    if os.path.exists('/monitored/etc/passwd'):
-        logging.info('Host filesystem mount OK: /monitored/etc/passwd is visible')
-    else:
-        logging.error('Host filesystem mount FAILED: /monitored/etc/passwd is not visible')
 
 def _heartbeat_sender():
     """Send periodic heartbeat to API to prove we're alive."""
@@ -36,22 +26,6 @@ class Handler(BaseHTTPRequestHandler):
     """Minimal internal control API for scanner."""
     def do_GET(self) -> None:
         """Return scanner health."""
-        path = urlparse(self.path)
-        if path.path.endswith('/api/path/check'):
-            query = parse_qs(path.query)
-            target = query.get('path', [''])[0]
-            exists = os.path.exists(target)
-            readable = os.access(target, os.R_OK)
-            self.send_response(200)
-            self.end_headers()
-            self.wfile.write(
-                ('{"path":"%s","exists":%s,"readable":%s}' % (
-                    target.replace('"', '\\"'),
-                    'true' if exists else 'false',
-                    'true' if readable else 'false',
-                )).encode()
-            )
-            return
         self.send_response(200)
         self.end_headers()
         self.wfile.write(f'{{"last_scan_id":{LAST_SCAN_ID}}}'.encode())
@@ -99,7 +73,6 @@ def main() -> None:
     global LAST_SCAN_ID
     signal.signal(signal.SIGTERM, _signal)
     signal.signal(signal.SIGINT, _signal)
-    _verify_host_mount()
     Thread(target=serve, daemon=True).start()
     Thread(target=_heartbeat_sender, daemon=True).start()
     while not STOP.is_set():
@@ -107,7 +80,7 @@ def main() -> None:
         try:
             LAST_SCAN_ID = scanner.run_scan('scheduler')
         except Exception:
-            logging.exception('Scheduled scan failed')
+            pass
         # Wait for the interval but re-check DB every _TICK seconds.
         # If the configured interval changes, break early so the next
         # iteration starts with the new value immediately.

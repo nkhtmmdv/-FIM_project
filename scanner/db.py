@@ -32,43 +32,6 @@ def baseline_exists() -> bool:
         return bool(cur.fetchone()['ok'])
 
 
-_DEFAULT_PATHS = [
-    ('/monitored/etc',      'CRITICAL'),
-    ('/monitored/bin',      'CRITICAL'),
-    ('/monitored/sbin',     'CRITICAL'),
-    ('/monitored/usr/bin',  'CRITICAL'),
-    ('/monitored/usr/sbin', 'CRITICAL'),
-    ('/monitored/home',     'WARNING'),
-    ('/monitored/root',     'CRITICAL'),
-    ('/monitored/var/log',  'WARNING'),
-    ('/monitored/opt',      'WARNING'),
-    ('/monitored/kali',     'WARNING'),
-]
-
-def ensure_default_monitored_paths() -> None:
-    """Seed default monitored directories on first start.
-
-    Also removes the overly-broad '/monitored' root entry if present
-    (it causes the scanner to walk the entire host filesystem).
-    """
-    with conn_cursor() as cur:
-        # Remove the too-broad root entry if it exists
-        cur.execute("DELETE FROM monitored_files WHERE file_path='/monitored'")
-        # Remove legacy single-file-only entries like /monitored/etc/passwd
-        cur.execute(
-            "DELETE FROM monitored_files "
-            "WHERE file_path ~ '^/monitored/[^/]+/[^/]+$' "
-            "  AND added_by='system'"
-        )
-        # Seed default directories (skip if already present)
-        for path, sev in _DEFAULT_PATHS:
-            cur.execute(
-                "INSERT INTO monitored_files(file_path, severity, added_by) "
-                "VALUES(%s, %s, 'system') ON CONFLICT(file_path) DO NOTHING",
-                (path, sev),
-            )
-
-
 def monitored_paths() -> List[str]:
     """Return active monitored paths."""
     with conn_cursor() as cur:

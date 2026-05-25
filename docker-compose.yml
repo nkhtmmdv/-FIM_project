@@ -19,13 +19,11 @@ services:
     env_file: .env
     read_only: true
     tmpfs: [/tmp]
-    privileged: true
-    cap_add:
-      - DAC_READ_SEARCH
+    user: "1001:1001"
     depends_on:
       postgres: { condition: service_healthy }
     volumes:
-      - /:/monitored:ro
+      - /etc:/monitored/etc:ro
       - fim_logs:/var/log/fim
     networks: [fim-internal, fim-external]
 
