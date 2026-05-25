@@ -67,6 +67,7 @@ def compare(scan_id:int, snaps:Dict[str,Dict[str,object]], base:Dict[str,Dict[st
         }
         # Only add to events (and alert) if this is a genuinely NEW finding
         if not db.has_unacked_duplicate(path, s['sha256_hash'], scan_id):
+            db.auto_ack_superseded(path, scan_id)  # silence stale old alerts for this file
             db.write_event(scan_id, ev)
             LOGGER.warning('file_change', {
                 'scan_id': scan_id, 'file_path': path,
@@ -85,6 +86,7 @@ def compare(scan_id:int, snaps:Dict[str,Dict[str,object]], base:Dict[str,Dict[st
                 'owner_before': b['owner_name'], 'owner_after': None,
             }
             if not db.has_unacked_duplicate(path, 'DELETED', scan_id):
+                db.auto_ack_superseded(path, scan_id)
                 db.write_event(scan_id, ev)
                 events.append(ev)
             stats['deleted']+=1

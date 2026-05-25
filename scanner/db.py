@@ -139,6 +139,24 @@ def get_unacked_open_changes(current_scan_id: int) -> List[Dict[str, object]]:
         return []
 
 
+def auto_ack_superseded(file_path: str, current_scan_id: int) -> None:
+    """Auto-acknowledge all prior unacked events for a file when a newer event is written.
+
+    This prevents stale OWNER_CHANGED / old MODIFIED events from cluttering
+    the alerts panel when a more recent change supersedes them.
+    """
+    try:
+        with conn_cursor() as cur:
+            cur.execute(
+                "UPDATE file_events SET acknowledged=TRUE, acknowledged_by='system:superseded', "
+                "acknowledged_at=NOW() "
+                "WHERE file_path=%s AND acknowledged=FALSE AND scan_run_id!=%s",
+                (file_path, current_scan_id),
+            )
+    except Exception:
+        pass
+
+
 def has_unacked_duplicate(file_path: str, hash_after: str, current_scan_id: int) -> bool:
     """Return True if an unacknowledged event for the same file+state already exists from a prior scan."""
     try:
