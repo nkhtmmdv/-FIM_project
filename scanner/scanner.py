@@ -18,40 +18,39 @@ def severity_for(path:str, mapping:Dict[str,str])->str:
         if path.startswith(prefix): best=sev
     return 'CRITICAL' if '/bin/' in path or '/sbin/' in path else best
 def compare(scan_id:int, snaps:Dict[str,Dict[str,object]], base:Dict[str,Dict[str,object]], sev:Dict[str,str], cfg:Dict[str,object])->Tuple[List[Dict[str,object]],Dict[str,int]]:
-    """Compare snapshots to baseline and persist events."""
+    """Compare snapshots to baseline and persist events.
+
+    Returns only **newly written** events (no stale duplicates).
+    This prevents repeat Telegram alerts for already-known unacked changes.
+    """
     events=[]; stats={'scanned':len(snaps),'clean':0,'modified':0,'deleted':0,'added':0,'permissions_changed':0,'owner_changed':0}
     for path,s in snaps.items():
         b=base.get(path); kind='UNCHANGED'
         if not b:
-            if s['sha256_hash'] in ('DELETED','UNREADABLE'): continue  # already known absent, skip
+            if s['sha256_hash'] in ('DELETED','UNREADABLE'): continue
             kind='ADDED'
         elif s['sha256_hash']=='DELETED':
-            if (b or {}).get('sha256_hash')=='DELETED': continue  # still deleted, no change
+            if (b or {}).get('sha256_hash')=='DELETED': continue
             kind='DELETED'
         elif s['sha256_hash']!=b['sha256_hash']:
-            kind='MODIFIED'
-            # If owner also changed (e.g., sudo edit), note it in flags but don't create separate alert
+            # Content changed — absorb any simultaneous owner change into one event
             if s['owner_uid']!=b['owner_uid'] or s['owner_gid']!=b['owner_gid']:
                 kind='MODIFIED_WITH_OWNER_CHANGE'
-                LOGGER.info(f'[DEBUG] {path}: hash changed + owner changed -> MODIFIED_WITH_OWNER_CHANGE')
             else:
-                LOGGER.info(f'[DEBUG] {path}: hash changed -> MODIFIED')
+                kind='MODIFIED'
         elif cfg.get('alert_on_permission_change',True) and s['permissions']!=b['permissions']:
             kind='PERMISSIONS_CHANGED'
-            LOGGER.info(f'[DEBUG] {path}: permissions changed')
         elif cfg.get('alert_on_owner_change',True) and (s['owner_uid']!=b['owner_uid'] or s['owner_gid']!=b['owner_gid']):
             kind='OWNER_CHANGED'
-            LOGGER.info(f'[DEBUG] {path}: owner changed (uid {b.get("owner_uid")}->{s["owner_uid"]}, gid {b.get("owner_gid")}->{s["owner_gid"]}), hash same={s["sha256_hash"]==b["sha256_hash"]}')
+
         if kind=='UNCHANGED': stats['clean']+=1; continue
         if kind=='ADDED' and not cfg.get('alert_on_new_files',True): continue
         if kind=='DELETED' and not cfg.get('alert_on_deleted_files',True): continue
         if kind in ('MODIFIED','MODIFIED_WITH_OWNER_CHANGE'): stats['modified']+=1
         elif kind=='DELETED': stats['deleted']+=1
         elif kind=='ADDED': stats['added']+=1
-        elif kind == 'PERMISSIONS_CHANGED':
-            stats['permissions_changed'] += 1
-        elif kind == 'OWNER_CHANGED':
-            stats['owner_changed'] += 1
+        elif kind=='PERMISSIONS_CHANGED': stats['permissions_changed']+=1
+        elif kind=='OWNER_CHANGED': stats['owner_changed']+=1
 
         ev = {
             'file_path': path,
@@ -66,39 +65,29 @@ def compare(scan_id:int, snaps:Dict[str,Dict[str,object]], base:Dict[str,Dict[st
             'owner_before': None if not b else b['owner_name'],
             'owner_after': s['owner_name'],
         }
+        # Only add to events (and alert) if this is a genuinely NEW finding
         if not db.has_unacked_duplicate(path, s['sha256_hash'], scan_id):
             db.write_event(scan_id, ev)
-            LOGGER.warning(
-                'file_change',
-                {
-                    'scan_id': scan_id,
-                    'file_path': path,
-                    'event_type': kind,
-                    'hash_before': ev['hash_before'],
-                    'hash_after': ev['hash_after'],
-                },
-            )
-        events.append(ev)
+            LOGGER.warning('file_change', {
+                'scan_id': scan_id, 'file_path': path,
+                'event_type': kind, 'hash_before': ev['hash_before'], 'hash_after': ev['hash_after'],
+            })
+            events.append(ev)
 
     for path, b in base.items():
         if path not in snaps and cfg.get('alert_on_deleted_files', True):
             ev = {
-                'file_path': path,
-                'event_type': 'DELETED',
+                'file_path': path, 'event_type': 'DELETED',
                 'severity': severity_for(path, sev),
-                'hash_before': b['sha256_hash'],
-                'hash_after': 'DELETED',
-                'size_before': b['file_size'],
-                'size_after': None,
-                'permissions_before': b['permissions'],
-                'permissions_after': None,
-                'owner_before': b['owner_name'],
-                'owner_after': None,
+                'hash_before': b['sha256_hash'], 'hash_after': 'DELETED',
+                'size_before': b['file_size'], 'size_after': None,
+                'permissions_before': b['permissions'], 'permissions_after': None,
+                'owner_before': b['owner_name'], 'owner_after': None,
             }
             if not db.has_unacked_duplicate(path, 'DELETED', scan_id):
                 db.write_event(scan_id, ev)
-            events.append(ev)
-            stats['deleted'] += 1
+                events.append(ev)
+            stats['deleted']+=1
 
     return events, stats
 
@@ -130,18 +119,8 @@ def run_scan(triggered_by: str = 'scheduler', reset_baseline: bool = False) -> i
         events, stats = compare(scan_id, snaps, db.load_baseline(), db.severities(), cfg)
         stats['duration_ms'] = int((time.time() - started) * 1000)
         db.finish_scan(scan_id, stats, 'COMPLETE')
-        alerts = [e for e in events if e['event_type'] != 'UNCHANGED']
-
-        # Re-alert for files that have unacknowledged open events from prior scans
-        # But skip if file already has a current change (avoid duplicate alerts for same file)
-        unacked = db.get_unacked_open_changes(scan_id)
-        LOGGER.info(f'[DEBUG] Found {len(unacked)} unacked events from prior scans')
-        for r in unacked:
-            if not any(e['file_path'] == r['file_path'] for e in alerts):
-                LOGGER.info(f'[DEBUG] Re-alerting old event: {r["file_path"]} type={r["event_type"]}')
-                alerts.append(r)
-            else:
-                LOGGER.info(f'[DEBUG] Skipping duplicate re-alert for: {r["file_path"]} (already in current alerts)')
+        # events now contains only genuinely new findings (not already-known unacked duplicates)
+        alerts = list(events)
 
         alerter.dispatch(alerts)
 
