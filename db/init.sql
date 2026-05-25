@@ -100,8 +100,17 @@ CREATE INDEX IF NOT EXISTS idx_file_events_file_path   ON file_events(file_path)
 CREATE INDEX IF NOT EXISTS idx_file_events_event_type  ON file_events(event_type);
 CREATE INDEX IF NOT EXISTS idx_scan_runs_started_at    ON scan_runs(started_at DESC);
 
--- Single root: scan everything under /monitored recursively
-INSERT INTO monitored_files(file_path, severity) VALUES
-    ('/monitored', 'WARNING')
+-- Default monitored directories (scanned recursively)
+INSERT INTO monitored_files(file_path, severity, added_by) VALUES
+    ('/monitored/etc',      'CRITICAL', 'system'),
+    ('/monitored/bin',      'CRITICAL', 'system'),
+    ('/monitored/sbin',     'CRITICAL', 'system'),
+    ('/monitored/usr/bin',  'CRITICAL', 'system'),
+    ('/monitored/usr/sbin', 'CRITICAL', 'system'),
+    ('/monitored/home',     'WARNING',  'system'),
+    ('/monitored/root',     'CRITICAL', 'system'),
+    ('/monitored/var/log',  'WARNING',  'system'),
+    ('/monitored/opt',      'WARNING',  'system'),
+    ('/monitored/kali',     'WARNING',  'system')
 ON CONFLICT DO NOTHING;
 

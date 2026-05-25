@@ -82,15 +82,31 @@ def snapshot(path: str) -> FileSnapshot:
         target,
     )
 
+_SKIP_DIRS = frozenset({
+    '/proc', '/sys', '/dev', '/run', '/tmp',
+    '/monitored/proc', '/monitored/sys', '/monitored/dev',
+    '/monitored/run', '/monitored/tmp',
+})
+
 def expand_paths(paths: Iterable[str]) -> List[str]:
-    """Expand monitored files and directories recursively."""
+    """Expand monitored files and directories recursively.
+
+    Virtual and volatile filesystems (proc, sys, dev, run, tmp) are
+    skipped to prevent infinite loops and irrelevant noise.
+    """
     import logging
     found = []
     for item in paths:
         p = Path(item)
+        if str(p) in _SKIP_DIRS:
+            logging.warning('[hasher] skipping virtual/volatile path: %s', item)
+            continue
         if p.is_dir():
             for root, dirs, names in os.walk(p, followlinks=False):
-                dirs.sort()
+                dirs[:] = [
+                    d for d in sorted(dirs)
+                    if str(Path(root) / d) not in _SKIP_DIRS
+                ]
                 names.sort()
                 for name in names:
                     found.append(str(Path(root) / name))
@@ -98,7 +114,7 @@ def expand_paths(paths: Iterable[str]) -> List[str]:
             found.append(str(p))
         else:
             logging.warning(
-                '[hasher] monitored path not found in container: %s '
-                '— check that the host path is mounted into the scanner volume', item
+                '[hasher] path not found in container: %s '
+                '— check volume mount in docker-compose.yml', item
             )
     return sorted(set(found))

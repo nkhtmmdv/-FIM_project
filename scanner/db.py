@@ -32,28 +32,41 @@ def baseline_exists() -> bool:
         return bool(cur.fetchone()['ok'])
 
 
-def ensure_root_monitored_path(root: str = '/monitored') -> None:
-    """Ensure root directory is monitored.
+_DEFAULT_PATHS = [
+    ('/monitored/etc',      'CRITICAL'),
+    ('/monitored/bin',      'CRITICAL'),
+    ('/monitored/sbin',     'CRITICAL'),
+    ('/monitored/usr/bin',  'CRITICAL'),
+    ('/monitored/usr/sbin', 'CRITICAL'),
+    ('/monitored/home',     'WARNING'),
+    ('/monitored/root',     'CRITICAL'),
+    ('/monitored/var/log',  'WARNING'),
+    ('/monitored/opt',      'WARNING'),
+    ('/monitored/kali',     'WARNING'),
+]
 
-    Replaces any individual file entries with the root directory so the
-    scanner automatically picks up every file — no manual configuration needed.
+def ensure_default_monitored_paths() -> None:
+    """Seed default monitored directories on first start.
+
+    Also removes the overly-broad '/monitored' root entry if present
+    (it causes the scanner to walk the entire host filesystem).
     """
     with conn_cursor() as cur:
-        # Check if root already present
-        cur.execute('SELECT 1 FROM monitored_files WHERE file_path=%s AND is_active=TRUE', (root,))
-        if cur.fetchone():
-            return
-        # Remove legacy single-file entries that are children of root
+        # Remove the too-broad root entry if it exists
+        cur.execute("DELETE FROM monitored_files WHERE file_path='/monitored'")
+        # Remove legacy single-file-only entries like /monitored/etc/passwd
         cur.execute(
-            "DELETE FROM monitored_files WHERE file_path LIKE %s AND file_path != %s",
-            (root + '/%', root),
+            "DELETE FROM monitored_files "
+            "WHERE file_path ~ '^/monitored/[^/]+/[^/]+$' "
+            "  AND added_by='system'"
         )
-        # Insert root
-        cur.execute(
-            "INSERT INTO monitored_files(file_path, severity, added_by) "
-            "VALUES(%s, 'WARNING', 'system:auto') ON CONFLICT(file_path) DO UPDATE SET is_active=TRUE",
-            (root,),
-        )
+        # Seed default directories (skip if already present)
+        for path, sev in _DEFAULT_PATHS:
+            cur.execute(
+                "INSERT INTO monitored_files(file_path, severity, added_by) "
+                "VALUES(%s, %s, 'system') ON CONFLICT(file_path) DO NOTHING",
+                (path, sev),
+            )
 
 
 def monitored_paths() -> List[str]:
