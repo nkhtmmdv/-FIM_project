@@ -48,7 +48,8 @@ def format_alert(event: Dict[str, object], host: str) -> str:
     """Build the Telegram alert body."""
     path = _display_path(str(event.get('file_path', '')))
     kind = event['event_type']
-    icons = {'MODIFIED': '\u270f\ufe0f', 'DELETED': '\U0001f5d1', 'ADDED': '\U0001f195',
+    icons = {'MODIFIED': '\u270f\ufe0f', 'MODIFIED_WITH_OWNER_CHANGE': '\u270f\ufe0f\u2194\U0001f464',
+             'DELETED': '\U0001f5d1', 'ADDED': '\U0001f195',
              'PERMISSIONS_CHANGED': '\U0001f512', 'OWNER_CHANGED': '\U0001f464'}
     icon = icons.get(kind, '\u26a0\ufe0f')
     sev  = event.get('severity', 'INFO')

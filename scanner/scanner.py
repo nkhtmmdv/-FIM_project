@@ -28,13 +28,17 @@ def compare(scan_id:int, snaps:Dict[str,Dict[str,object]], base:Dict[str,Dict[st
         elif s['sha256_hash']=='DELETED':
             if (b or {}).get('sha256_hash')=='DELETED': continue  # still deleted, no change
             kind='DELETED'
-        elif s['sha256_hash']!=b['sha256_hash']: kind='MODIFIED'
+        elif s['sha256_hash']!=b['sha256_hash']:
+            kind='MODIFIED'
+            # If owner also changed (e.g., sudo edit), note it in flags but don't create separate alert
+            if s['owner_uid']!=b['owner_uid'] or s['owner_gid']!=b['owner_gid']:
+                kind='MODIFIED_WITH_OWNER_CHANGE'
         elif cfg.get('alert_on_permission_change',True) and s['permissions']!=b['permissions']: kind='PERMISSIONS_CHANGED'
         elif cfg.get('alert_on_owner_change',True) and (s['owner_uid']!=b['owner_uid'] or s['owner_gid']!=b['owner_gid']): kind='OWNER_CHANGED'
         if kind=='UNCHANGED': stats['clean']+=1; continue
         if kind=='ADDED' and not cfg.get('alert_on_new_files',True): continue
         if kind=='DELETED' and not cfg.get('alert_on_deleted_files',True): continue
-        if kind=='MODIFIED': stats['modified']+=1
+        if kind in ('MODIFIED','MODIFIED_WITH_OWNER_CHANGE'): stats['modified']+=1
         elif kind=='DELETED': stats['deleted']+=1
         elif kind=='ADDED': stats['added']+=1
         elif kind == 'PERMISSIONS_CHANGED':
@@ -122,6 +126,7 @@ def run_scan(triggered_by: str = 'scheduler', reset_baseline: bool = False) -> i
         alerts = [e for e in events if e['event_type'] != 'UNCHANGED']
 
         # Re-alert for files that have unacknowledged open events from prior scans
+        # But skip if file already has a current change (avoid duplicate alerts for same file)
         for r in db.get_unacked_open_changes(scan_id):
             if not any(e['file_path'] == r['file_path'] for e in alerts):
                 alerts.append(r)

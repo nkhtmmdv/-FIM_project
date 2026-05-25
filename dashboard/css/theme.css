@@ -1192,7 +1192,7 @@ tbody tr:hover td {
   border-color: rgba(34,211,238,.14);
 }
 
-.badge.CRITICAL, .badge.MODIFIED, .badge.FAILED {
+.badge.CRITICAL, .badge.MODIFIED, .badge.FAILED, .badge.MODIFIED_WITH_OWNER_CHANGE {
   background: rgba(251,113,133,.13);
   color: #fda4af;
   border-color: rgba(251,113,133,.25);
