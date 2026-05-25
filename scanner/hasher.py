@@ -84,6 +84,7 @@ def snapshot(path: str) -> FileSnapshot:
 
 def expand_paths(paths: Iterable[str]) -> List[str]:
     """Expand monitored files and directories recursively."""
+    import logging
     found = []
     for item in paths:
         p = Path(item)
@@ -93,6 +94,11 @@ def expand_paths(paths: Iterable[str]) -> List[str]:
                 names.sort()
                 for name in names:
                     found.append(str(Path(root) / name))
-        else:
+        elif p.exists():
             found.append(str(p))
+        else:
+            logging.warning(
+                '[hasher] monitored path not found in container: %s '
+                '— check that the host path is mounted into the scanner volume', item
+            )
     return sorted(set(found))
