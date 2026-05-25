@@ -19,6 +19,7 @@ services:
     env_file: .env
     read_only: true
     tmpfs: [/tmp]
+    privileged: true
     cap_add:
       - DAC_READ_SEARCH
     depends_on:

@@ -573,7 +573,13 @@ async function addFile() {
     if (!path) { showToast('Enter a file or directory path', 'error'); return; }
     var res = await api('/files/add', { method: 'POST', body: JSON.stringify({ file_path: path, severity: sev }) });
     if (res && res.ok) {
-        showToast('Added: ' + path + ' — will be scanned on next cycle', 'success');
+        if (res.scanner_check && res.scanner_check.exists === false) {
+            showToast('Added, but scanner cannot see this path: ' + res.scan_path, 'error');
+        } else if (res.scanner_check && res.scanner_check.readable === false) {
+            showToast('Added, but scanner cannot read this path: ' + res.scan_path, 'error');
+        } else {
+            showToast('Added: ' + path + ' — will be scanned on next cycle', 'success');
+        }
         document.getElementById('newFilePath').value = '';
         loadSettings();
     } else {

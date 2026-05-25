@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import re
+import requests
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from auth import current_user
 from database import audit, execute, execute_count, fetch_all, fetch_one
@@ -92,13 +93,19 @@ def add_file(body: FileAdd, request: Request, user=Depends(current_user)):
     )
     execute('DELETE FROM baseline_hashes WHERE file_path=%s', (scan_path,))
     execute('UPDATE file_events SET acknowledged=TRUE WHERE file_path=%s AND acknowledged=FALSE', (scan_path,))
+    scanner_check = {'exists': None, 'readable': None, 'detail': 'scanner check unavailable'}
+    try:
+        resp = requests.get('http://scanner:9000/api/path/check', params={'path': scan_path}, timeout=3)
+        scanner_check = resp.json()
+    except Exception as exc:
+        scanner_check = {'exists': None, 'readable': None, 'detail': str(exc)}
     audit(
         user['username'],
         'file.add',
         scan_path,
         request.client.host if request.client else None,
     )
-    return {'ok': True}
+    return {'ok': True, 'scan_path': scan_path, 'scanner_check': scanner_check}
 
 
 @router.delete('/{path:path}')

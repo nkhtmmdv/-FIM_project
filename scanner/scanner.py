@@ -1,6 +1,7 @@
 """FIM scanning and comparison engine."""
 from __future__ import annotations
 import time
+import logging
 from typing import Dict, List, Tuple
 import yaml
 import alerter
@@ -100,6 +101,7 @@ def run_scan(triggered_by: str = 'scheduler', reset_baseline: bool = False) -> i
     cfg = load_config()
     paths = db.monitored_paths() or cfg['monitored_files']
     expanded = expand_paths(paths)
+    logging.info('scan_start triggered_by=%s monitored_paths=%s expanded_count=%s', triggered_by, paths, len(expanded))
     scan_id = db.start_scan(triggered_by)
 
     try:
