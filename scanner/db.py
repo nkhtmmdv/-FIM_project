@@ -32,6 +32,30 @@ def baseline_exists() -> bool:
         return bool(cur.fetchone()['ok'])
 
 
+def ensure_root_monitored_path(root: str = '/monitored') -> None:
+    """Ensure root directory is monitored.
+
+    Replaces any individual file entries with the root directory so the
+    scanner automatically picks up every file — no manual configuration needed.
+    """
+    with conn_cursor() as cur:
+        # Check if root already present
+        cur.execute('SELECT 1 FROM monitored_files WHERE file_path=%s AND is_active=TRUE', (root,))
+        if cur.fetchone():
+            return
+        # Remove legacy single-file entries that are children of root
+        cur.execute(
+            "DELETE FROM monitored_files WHERE file_path LIKE %s AND file_path != %s",
+            (root + '/%', root),
+        )
+        # Insert root
+        cur.execute(
+            "INSERT INTO monitored_files(file_path, severity, added_by) "
+            "VALUES(%s, 'WARNING', 'system:auto') ON CONFLICT(file_path) DO UPDATE SET is_active=TRUE",
+            (root,),
+        )
+
+
 def monitored_paths() -> List[str]:
     """Return active monitored paths."""
     with conn_cursor() as cur:

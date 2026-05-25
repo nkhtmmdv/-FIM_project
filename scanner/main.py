@@ -73,6 +73,7 @@ def main() -> None:
     global LAST_SCAN_ID
     signal.signal(signal.SIGTERM, _signal)
     signal.signal(signal.SIGINT, _signal)
+    _db.ensure_root_monitored_path('/monitored')
     Thread(target=serve, daemon=True).start()
     Thread(target=_heartbeat_sender, daemon=True).start()
     while not STOP.is_set():
