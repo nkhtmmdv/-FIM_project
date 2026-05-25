@@ -570,10 +570,15 @@ async function saveSettings(settingsArr) {
 async function addFile() {
     var path = document.getElementById('newFilePath').value.trim();
     var sev = document.getElementById('newFileSeverity').value;
-    if (!path) return;
-    await api('/files/add', { method: 'POST', body: JSON.stringify({ file_path: path, severity: sev }) });
-    document.getElementById('newFilePath').value = '';
-    loadSettings();
+    if (!path) { showToast('Enter a file or directory path', 'error'); return; }
+    var res = await api('/files/add', { method: 'POST', body: JSON.stringify({ file_path: path, severity: sev }) });
+    if (res && res.ok) {
+        showToast('Added: ' + path + ' — will be scanned on next cycle', 'success');
+        document.getElementById('newFilePath').value = '';
+        loadSettings();
+    } else {
+        showToast('Failed to add: ' + (res && res.detail ? res.detail : 'unknown error'), 'error');
+    }
 }
 
 /**
