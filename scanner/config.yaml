@@ -1,4 +1,4 @@
-monitored_files: [/monitored/etc/passwd]
+monitored_files: [/monitored]
 scan_interval_seconds: 120
 alert_on_new_files: true
 alert_on_deleted_files: true
