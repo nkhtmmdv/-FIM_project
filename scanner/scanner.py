@@ -35,13 +35,16 @@ def compare(scan_id:int, snaps:Dict[str,Dict[str,object]], base:Dict[str,Dict[st
             kind='DELETED'
         elif s['sha256_hash']!=b['sha256_hash']:
             # Content changed — absorb any simultaneous owner change into one event
-            if s['owner_uid']!=b['owner_uid'] or s['owner_gid']!=b['owner_gid']:
+            if b['owner_uid'] is not None and b['owner_gid'] is not None and (s['owner_uid']!=b['owner_uid'] or s['owner_gid']!=b['owner_gid']):
                 kind='MODIFIED_WITH_OWNER_CHANGE'
             else:
                 kind='MODIFIED'
         elif cfg.get('alert_on_permission_change',True) and s['permissions']!=b['permissions']:
             kind='PERMISSIONS_CHANGED'
-        elif cfg.get('alert_on_owner_change',True) and (s['owner_uid']!=b['owner_uid'] or s['owner_gid']!=b['owner_gid']):
+        elif cfg.get('alert_on_owner_change',True) and (
+            b['owner_uid'] is not None and b['owner_gid'] is not None and
+            (s['owner_uid']!=b['owner_uid'] or s['owner_gid']!=b['owner_gid'])
+        ):
             kind='OWNER_CHANGED'
 
         if kind=='UNCHANGED': stats['clean']+=1; continue
