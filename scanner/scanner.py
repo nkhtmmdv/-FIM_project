@@ -14,10 +14,12 @@ def load_config()->Dict[str,object]:
     with open(CONFIG_PATH,'r',encoding='utf-8') as handle: return yaml.safe_load(handle)
 def severity_for(path:str, mapping:Dict[str,str])->str:
     """Determine severity from configured prefixes."""
+    from pathlib import Path
     best='INFO'
     for prefix, sev in mapping.items():
         if path.startswith(prefix): best=sev
-    return 'CRITICAL' if '/bin/' in path or '/sbin/' in path else best
+    parts = set(Path(path).parts)
+    return 'CRITICAL' if parts & {'bin', 'sbin'} else best
 def compare(scan_id:int, snaps:Dict[str,Dict[str,object]], base:Dict[str,Dict[str,object]], sev:Dict[str,str], cfg:Dict[str,object])->Tuple[List[Dict[str,object]],Dict[str,int]]:
     """Compare snapshots to baseline and persist events.
 

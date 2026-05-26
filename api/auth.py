@@ -18,20 +18,22 @@ def validate_secrets() -> None:
     """Validate minimum secret lengths, warn instead of crashing."""
     import logging
 
-    if len(os.getenv('JWT_SECRET', '')) < 32:
-        raise RuntimeError('JWT_SECRET must be at least 32 characters — set it in .env')
+    if len(os.getenv('JWT_SECRET', '')) < 64:
+        raise RuntimeError('JWT_SECRET must be at least 64 characters — set it in .env')
     if not os.getenv('POSTGRES_PASSWORD', ''):
         raise RuntimeError('POSTGRES_PASSWORD must be set in .env')
 
 
 def hash_password(password: str) -> str:
     """Hash a password with bcrypt (max 72 bytes)."""
-    return PWD.hash(password[:72])
+    if len(password.encode()) > 72:
+        raise ValueError('Password must be 72 bytes or fewer (bcrypt limit)')
+    return PWD.hash(password)
 
 
 def verify_password(password: str, hashed: str) -> bool:
     """Verify a bcrypt password (max 72 bytes)."""
-    return PWD.verify(password[:72], hashed)
+    return PWD.verify(password, hashed)
 
 
 def create_token(username: str, kind: str, minutes: int) -> str:

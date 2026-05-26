@@ -74,8 +74,6 @@ CREATE TABLE IF NOT EXISTS users (
 ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_chat_id   TEXT DEFAULT '';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_bot_token TEXT DEFAULT '';
 
--- Migration: replace all individual file/dir entries with single root
-DELETE FROM monitored_files;
 ALTER TABLE file_events ADD COLUMN IF NOT EXISTS acknowledged_by  TEXT;
 ALTER TABLE file_events ADD COLUMN IF NOT EXISTS acknowledged_at  TIMESTAMPTZ;
 
@@ -99,6 +97,7 @@ CREATE INDEX IF NOT EXISTS idx_file_events_detected_at ON file_events(detected_a
 CREATE INDEX IF NOT EXISTS idx_file_events_file_path   ON file_events(file_path);
 CREATE INDEX IF NOT EXISTS idx_file_events_event_type  ON file_events(event_type);
 CREATE INDEX IF NOT EXISTS idx_scan_runs_started_at    ON scan_runs(started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_file_events_acknowledged ON file_events(acknowledged) WHERE acknowledged = FALSE;
 
 -- Default monitored directories (scanned recursively)
 INSERT INTO monitored_files(file_path, severity, added_by) VALUES

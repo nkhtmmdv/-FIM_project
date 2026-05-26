@@ -1,5 +1,7 @@
 """FastAPI application for FIM."""
+import asyncio
 import os, signal, time
+from collections import defaultdict
 from typing import Set
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,6 +12,10 @@ from models.alert import LoginRequest, TokenRefresh
 from routes import files, alerts, baseline, stats, settings, profile
 APP_VERSION = '1.0.0'
 sockets: Set[WebSocket] = set()
+_sockets_lock: asyncio.Lock = asyncio.Lock()
+_login_attempts: dict = defaultdict(list)
+_LOGIN_MAX = 10
+_LOGIN_WINDOW = 60
 origins = [origin.strip() for origin in os.getenv('CORS_ORIGINS', '*').split(',') if origin.strip()]
 allow_credentials = origins != ['*']
 app = FastAPI(title='FIM API', version=APP_VERSION)
@@ -45,6 +51,13 @@ def startup() -> None:
 @app.post('/api/v1/auth/login')
 async def login(request: Request, body: LoginRequest):
     """Authenticate and return access plus refresh tokens."""
+    ip = request.client.host if request.client else 'unknown'
+    now = time.time()
+    attempts = _login_attempts[ip]
+    _login_attempts[ip] = [t for t in attempts if now - t < _LOGIN_WINDOW]
+    if len(_login_attempts[ip]) >= _LOGIN_MAX:
+        raise HTTPException(status_code=429, detail='too many login attempts, try again later')
+    _login_attempts[ip].append(now)
     row = fetch_one('SELECT * FROM users WHERE username=%s', (body.username,))
     if not row or not verify_password(body.password, row['password_hash']):
         raise HTTPException(status_code=401, detail='bad credentials')
@@ -100,12 +113,14 @@ async def live(ws: WebSocket):
         return
 
     await ws.accept()
-    sockets.add(ws)
+    async with _sockets_lock:
+        sockets.add(ws)
     try:
         while True:
             await ws.receive_text()
     except WebSocketDisconnect:
-        sockets.discard(ws)
+        async with _sockets_lock:
+            sockets.discard(ws)
 
 
 app.include_router(files.router, prefix='/api/v1')
