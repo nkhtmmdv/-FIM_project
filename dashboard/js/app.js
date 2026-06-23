@@ -16,9 +16,125 @@ let alertsPageOffset = 0;
 let filesPageOffset = 0;
 let tokenIsSet = false;   // true when a Telegram token is already saved in DB
 const PAGE_SIZE = 50;
+let authBootMessage = '';
 
 /** Promise-based sleep. */
 function sleep(ms) { return new Promise(function(r) { setTimeout(r, ms); }); }
+
+/** Decode JWT payload without signature verification. */
+function parseJwtPayload(jwt) {
+    try {
+        var parts = jwt.split('.');
+        if (parts.length !== 3) return null;
+        var payload = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+        while (payload.length % 4) payload += '=';
+        return JSON.parse(atob(payload));
+    } catch (e) {
+        return null;
+    }
+}
+
+/** True if access token exists, is correct type, and not expired. */
+function isAccessTokenValid(tok) {
+    if (!tok) return false;
+    var p = parseJwtPayload(tok);
+    if (!p || p.type !== 'access') return false;
+    if (p.exp && p.exp * 1000 <= Date.now()) return false;
+    return true;
+}
+
+/** Clear stored credentials and stop live updates. */
+function clearAuth() {
+    token = '';
+    localStorage.removeItem('fimToken');
+    localStorage.removeItem('fimRefresh');
+    stopWS();
+}
+
+/** Parse response body safely; never throws on HTML/plain-text errors. */
+async function parseApiResponse(r) {
+    var text = await r.text();
+    if (!text) {
+        return { data: null, error: r.ok ? null : 'Request failed (' + r.status + ')' };
+    }
+    try {
+        return { data: JSON.parse(text), error: null };
+    } catch (e) {
+        var msg = r.status === 502 || r.status === 503
+            ? 'Server unavailable'
+            : 'Invalid server response (' + r.status + ')';
+        return { data: null, error: msg };
+    }
+}
+
+/** Extract FastAPI error detail from parsed JSON. */
+function apiErrorMessage(data, fallback) {
+    if (!data || !data.detail) return fallback;
+    if (Array.isArray(data.detail)) {
+        return data.detail.map(function (e) { return e.msg || JSON.stringify(e); }).join(', ');
+    }
+    return String(data.detail);
+}
+
+/**
+ * Restore session from localStorage: refresh if needed, verify with server.
+ * @returns {Promise<boolean>}
+ */
+async function ensureAuth() {
+    authBootMessage = '';
+    if (!token && localStorage.getItem('fimRefresh')) {
+        await _tryRefresh();
+    }
+    if (!token) return false;
+    if (!isAccessTokenValid(token)) {
+        if (localStorage.getItem('fimRefresh')) {
+            var refreshed = await _tryRefresh();
+            if (!(refreshed && isAccessTokenValid(token))) {
+                clearAuth();
+                authBootMessage = 'Session expired — please sign in again';
+                return false;
+            }
+        } else {
+            clearAuth();
+            authBootMessage = 'Session expired — please sign in again';
+            return false;
+        }
+    }
+    var check = await _verifyAuthWithServer();
+    if (!check.ok) {
+        clearAuth();
+        if (check.reason === 'network') {
+            authBootMessage = 'Server unavailable — check that the API is running';
+        } else if (check.reason === 'session') {
+            authBootMessage = 'Session expired — please sign in again';
+        } else {
+            authBootMessage = 'Server unavailable — check that the API is running';
+        }
+        return false;
+    }
+    return true;
+}
+
+/** Confirm the access token is accepted by the API. */
+async function _verifyAuthWithServer() {
+    try {
+        var r = await fetch(API + '/auth/profile', {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (r.status === 401) {
+            if (await _tryRefresh()) {
+                r = await fetch(API + '/auth/profile', {
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
+            }
+        }
+        if (r.ok) return { ok: true };
+        if (r.status === 401) return { ok: false, reason: 'session' };
+        return { ok: false, reason: 'server' };
+    } catch (e) {
+        return { ok: false, reason: 'network' };
+    }
+}
 
 /* =========================================================
    API Client
@@ -41,19 +157,26 @@ async function api(path, opts) {
     }
     opts.headers = headers;
     var r = await fetch(API + path, opts);
-    if (r.status === 401) {
-        // Try to refresh the access token once
+    if (r.status === 401 || r.status === 403) {
         var refreshed = await _tryRefresh();
-        if (!refreshed) { showPage('login'); return null; }
+        if (!refreshed) {
+            clearAuth();
+            location.hash = '#login';
+            showPage('login');
+            return null;
+        }
         opts.headers['Authorization'] = 'Bearer ' + token;
         r = await fetch(API + path, opts);
-        if (r.status === 401) { showPage('login'); return null; }
+        if (r.status === 401 || r.status === 403) {
+            clearAuth();
+            location.hash = '#login';
+            showPage('login');
+            return null;
+        }
     }
-    try {
-        return await r.json();
-    } catch (e) {
-        return null;
-    }
+    var parsed = await parseApiResponse(r);
+    if (!r.ok && parsed.error) return null;
+    return parsed.data;
 }
 
 /**
@@ -69,10 +192,13 @@ async function _tryRefresh() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ refresh_token: rt })
         });
-        if (!r.ok) return false;
-        var data = await r.json();
-        if (data && data.access_token) {
-            token = data.access_token;
+        if (!r.ok) {
+            if (r.status === 401) localStorage.removeItem('fimRefresh');
+            return false;
+        }
+        var parsed = await parseApiResponse(r);
+        if (parsed.data && parsed.data.access_token) {
+            token = parsed.data.access_token;
             localStorage.setItem('fimToken', token);
             return true;
         }
@@ -98,8 +224,17 @@ function showPage(page) {
         a.classList.toggle('active', a.getAttribute('data-page') === page);
     });
 
-    var isLoggedIn = !!token;
+    var isLoggedIn = isAccessTokenValid(token);
     document.querySelector('.nav').style.display = (page === 'login') ? 'none' : '';
+
+    if (page === 'login' && authBootMessage) {
+        var bootErr = document.getElementById('loginError');
+        if (bootErr) {
+            bootErr.textContent = authBootMessage;
+            bootErr.style.display = '';
+        }
+        authBootMessage = '';
+    }
 
     if (page === 'dashboard' && isLoggedIn) loadDashboard();
     else if (page === 'alerts' && isLoggedIn) loadAlerts();
@@ -111,8 +246,17 @@ function showPage(page) {
  * Hash-based route handler.
  */
 function route() {
-    var hash = location.hash.replace('#', '') || 'dashboard';
-    if (!token && hash !== 'login') { showPage('login'); return; }
+    var hash = location.hash.replace('#', '');
+    if (!isAccessTokenValid(token)) {
+        if (hash && hash !== 'login') location.hash = '#login';
+        showPage('login');
+        return;
+    }
+    if (!hash || hash === 'login') {
+        location.hash = '#dashboard';
+        showPage('dashboard');
+        return;
+    }
     showPage(hash);
 }
 
@@ -174,7 +318,10 @@ function esc(s) {
  */
 async function loadDashboard() {
     var s = await api('/stats/summary');
-    if (!s) return;
+    if (!s) {
+        if (isAccessTokenValid(token)) showToast('Failed to load dashboard — server may be unavailable', 'error');
+        return;
+    }
     animateNum('total', s.total_files);
     animateNum('clean', Math.max(0, s.clean || 0));
     animateNum('alertCount', s.alerts);
@@ -757,7 +904,8 @@ async function login(forceUser, forcePass) {
         if (errEl) { errEl.textContent = 'Server unavailable'; errEl.style.display = ''; }
         return;
     }
-    var data = await r.json();
+    var parsed = await parseApiResponse(r);
+    var data = parsed.data;
     if (r.ok && data && data.access_token) {
         token = data.access_token;
         localStorage.setItem('fimToken', token);
@@ -766,14 +914,7 @@ async function login(forceUser, forcePass) {
         route();
         if (!socket) startWS();
     } else {
-        var msg = 'Login failed';
-        if (data && data.detail) {
-            if (Array.isArray(data.detail)) {
-                msg = data.detail.map(function(e){ return e.msg || JSON.stringify(e); }).join(', ');
-            } else {
-                msg = data.detail;
-            }
-        }
+        var msg = parsed.error || apiErrorMessage(data, 'Login failed');
         if (errEl) { errEl.textContent = msg; errEl.style.display = ''; }
     }
 }
@@ -811,12 +952,13 @@ async function register() {
     } catch (e) {
         errEl.textContent = 'Server unavailable'; errEl.style.display = ''; return;
     }
-    var data = await r.json();
+    var parsed = await parseApiResponse(r);
+    var data = parsed.data;
     if (r.ok && data.ok) {
         showLogin();
         await login(username, password);
     } else {
-        errEl.textContent = data.detail || 'Registration failed';
+        errEl.textContent = parsed.error || apiErrorMessage(data, 'Registration failed');
         errEl.style.display = '';
     }
 }
@@ -825,10 +967,8 @@ async function register() {
  * Logout and redirect to login page.
  */
 function logout() {
-    token = '';
-    localStorage.removeItem('fimToken');
-    localStorage.removeItem('fimRefresh');
-    stopWS();
+    clearAuth();
+    location.hash = '#login';
     showPage('login');
 }
 
@@ -1085,11 +1225,12 @@ window.addEventListener('fim-live', function (e) {
    Initialization
    ========================================================= */
 
-window.addEventListener('load', function () {
+window.addEventListener('load', async function () {
     if (Notification.permission === 'default') Notification.requestPermission();
     initFileTabs();
     initFileSearch();
     window.addEventListener('hashchange', route);
+    await ensureAuth();
     route();
-    if (token) startWS();
+    if (isAccessTokenValid(token)) startWS();
 });
