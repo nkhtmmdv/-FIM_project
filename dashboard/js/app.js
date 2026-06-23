@@ -7,7 +7,6 @@
    Constants & State
    ========================================================= */
 const API = '/api/v1';
-let LOCAL_MODE = false;
 let token = localStorage.getItem('fimToken') || '';
 let currentPage = 'dashboard';
 let scanInterval = 30;
@@ -20,21 +19,6 @@ const PAGE_SIZE = 50;
 
 /** Promise-based sleep. */
 function sleep(ms) { return new Promise(function(r) { setTimeout(r, ms); }); }
-
-/** In local mode the dashboard is always treated as authenticated. */
-function isLoggedIn() {
-    return LOCAL_MODE || !!token;
-}
-
-/** Read runtime mode from the backend so UI matches server config. */
-async function loadAppConfig() {
-    try {
-        var r = await fetch(API + '/app/config');
-        if (!r.ok) return;
-        var data = await r.json();
-        LOCAL_MODE = !!(data && data.local_mode);
-    } catch (e) {}
-}
 
 /* =========================================================
    API Client
@@ -49,15 +33,15 @@ async function loadAppConfig() {
 async function api(path, opts) {
     opts = opts || {};
     var headers = {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Authorization': token ? 'Bearer ' + token : ''
     };
-    if (token) headers['Authorization'] = 'Bearer ' + token;
     if (opts.headers) {
         Object.keys(opts.headers).forEach(function (k) { headers[k] = opts.headers[k]; });
     }
     opts.headers = headers;
     var r = await fetch(API + path, opts);
-    if (!LOCAL_MODE && r.status === 401) {
+    if (r.status === 401) {
         // Try to refresh the access token once
         var refreshed = await _tryRefresh();
         if (!refreshed) { showPage('login'); return null; }
@@ -77,7 +61,6 @@ async function api(path, opts) {
  * @returns {Promise<boolean>} true if refresh succeeded
  */
 async function _tryRefresh() {
-    if (LOCAL_MODE) return true;
     var rt = localStorage.getItem('fimRefresh');
     if (!rt) return false;
     try {
@@ -106,7 +89,6 @@ async function _tryRefresh() {
  * @param {string} page - Page name (dashboard, alerts, history, settings, login)
  */
 function showPage(page) {
-    if (LOCAL_MODE && page === 'login') page = 'dashboard';
     currentPage = page;
     document.querySelectorAll('.page').forEach(function (el) { el.classList.remove('active'); });
     var target = document.getElementById('page-' + page);
@@ -116,13 +98,13 @@ function showPage(page) {
         a.classList.toggle('active', a.getAttribute('data-page') === page);
     });
 
-    var loggedIn = isLoggedIn();
+    var isLoggedIn = !!token;
     document.querySelector('.nav').style.display = (page === 'login') ? 'none' : '';
 
-    if (page === 'dashboard' && loggedIn) loadDashboard();
-    else if (page === 'alerts' && loggedIn) loadAlerts();
-    else if (page === 'history' && loggedIn) loadHistory();
-    else if (page === 'settings' && loggedIn) loadSettings();
+    if (page === 'dashboard' && isLoggedIn) loadDashboard();
+    else if (page === 'alerts' && isLoggedIn) loadAlerts();
+    else if (page === 'history' && isLoggedIn) loadHistory();
+    else if (page === 'settings' && isLoggedIn) loadSettings();
 }
 
 /**
@@ -130,12 +112,7 @@ function showPage(page) {
  */
 function route() {
     var hash = location.hash.replace('#', '') || 'dashboard';
-    if (LOCAL_MODE && (!hash || hash === 'login')) {
-        if (location.hash !== '#dashboard') location.hash = '#dashboard';
-        showPage('dashboard');
-        return;
-    }
-    if (!LOCAL_MODE && !token && hash !== 'login') { showPage('login'); return; }
+    if (!token && hash !== 'login') { showPage('login'); return; }
     showPage(hash);
 }
 
@@ -193,7 +170,7 @@ function esc(s) {
    ========================================================= */
 
 /**
- * Load all dashboard widgets: stats, file table, alerts feed, timeline.
+ * Load all dashboard widgets: stats, file table, alerts feed.
  */
 async function loadDashboard() {
     var s = await api('/stats/summary');
@@ -208,9 +185,6 @@ async function loadDashboard() {
 
     await loadFilesTable();
     await loadFeed();
-
-    var tl = await api('/stats/timeline');
-    if (tl) renderTimeline(tl);
 
     await loadLastScan();
 }
@@ -548,9 +522,7 @@ async function loadSettings() {
     }
 
     // Load personal Telegram credentials from user profile
-    var profHeaders = {};
-    if (token) profHeaders['Authorization'] = 'Bearer ' + token;
-    var prof = await fetch(API + '/auth/profile', { headers: profHeaders });
+    var prof = await fetch(API + '/auth/profile', { headers: { 'Authorization': 'Bearer ' + token } });
     if (prof.ok) {
         var p = await prof.json();
         if (p.telegram_chat_id) document.getElementById('tgChat').value = p.telegram_chat_id;
@@ -640,11 +612,9 @@ async function purgeFile(encodedPath) {
     console.log('[PURGE] DELETE', url);
     var r;
     try {
-        var headers = { 'Content-Type': 'application/json' };
-        if (token) headers['Authorization'] = 'Bearer ' + token;
         r = await fetch(url, {
             method: 'DELETE',
-            headers: headers
+            headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }
         });
     } catch (e) {
         console.error('[PURGE] network error', e);
@@ -763,12 +733,6 @@ async function exportBaseline() {
  * @param {string} [forcePass] - Optional password override
  */
 async function login(forceUser, forcePass) {
-    if (LOCAL_MODE) {
-        location.hash = '#dashboard';
-        route();
-        if (!socket) startWS();
-        return;
-    }
     var user = forceUser || document.getElementById('loginUser').value.trim();
     var pass = forcePass || document.getElementById('loginPass').value;
     var errEl = document.getElementById('loginError');
@@ -827,10 +791,6 @@ function showLogin() {
  * Register a new account and auto-login.
  */
 async function register() {
-    if (LOCAL_MODE) {
-        showToast('Registration is disabled in local mode', 'warning');
-        return;
-    }
     var errEl = document.getElementById('regError');
     errEl.style.display = 'none';
     var username = document.getElementById('regUser').value.trim();
@@ -862,12 +822,6 @@ async function register() {
  * Logout and redirect to login page.
  */
 function logout() {
-    if (LOCAL_MODE) {
-        showToast('Local mode is enabled — logout is disabled', 'warning');
-        location.hash = '#dashboard';
-        showPage('dashboard');
-        return;
-    }
     token = '';
     localStorage.removeItem('fimToken');
     localStorage.removeItem('fimRefresh');
@@ -948,11 +902,9 @@ async function saveProfile() {
         current_password:   curPass,
         new_password:       newPass
     };
-    var headers = { 'Content-Type': 'application/json' };
-    if (token) headers['Authorization'] = 'Bearer ' + token;
     var r = await fetch(API + '/auth/profile', {
         method: 'PUT',
-        headers: headers,
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
         body: JSON.stringify(body)
     });
     var data = await r.json();
@@ -982,11 +934,9 @@ async function testTelegramPersonal() {
     }
     // If a new token was typed save it first; otherwise use the existing DB token
     if (tgToken) { await saveProfile(); }
-    var headers = {};
-    if (token) headers['Authorization'] = 'Bearer ' + token;
     var res = await fetch(API + '/auth/test-telegram', {
         method: 'POST',
-        headers: headers
+        headers: { 'Authorization': 'Bearer ' + token }
     });
     var data = await res.json();
     if (data && data.ok) {
@@ -1133,25 +1083,10 @@ window.addEventListener('fim-live', function (e) {
    ========================================================= */
 
 window.addEventListener('load', function () {
-    (async function () {
-        if (Notification.permission === 'default') Notification.requestPermission();
-        initFileTabs();
-        initFileSearch();
-        await loadAppConfig();
-        window.addEventListener('hashchange', route);
-        if (LOCAL_MODE) {
-            var logoutBtn = document.getElementById('logoutBtn');
-            if (logoutBtn) logoutBtn.style.display = 'none';
-            var loginPage = document.getElementById('page-login');
-            if (loginPage) loginPage.style.display = 'none';
-            var passwordSection = document.getElementById('passwordSection');
-            if (passwordSection) passwordSection.style.display = 'none';
-            var profileHelpText = document.getElementById('profileHelpText');
-            if (profileHelpText) {
-                profileHelpText.textContent = 'This installation runs in single-user local mode. Configure Telegram here if you want alert delivery.';
-            }
-        }
-        route();
-        if (LOCAL_MODE || token) startWS();
-    })();
+    if (Notification.permission === 'default') Notification.requestPermission();
+    initFileTabs();
+    initFileSearch();
+    window.addEventListener('hashchange', route);
+    route();
+    if (token) startWS();
 });
