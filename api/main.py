@@ -5,7 +5,7 @@ from collections import defaultdict
 from typing import Set
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from auth import create_token, current_user, validate_secrets, verify_password
+from auth import create_token, current_user, ensure_local_user, is_local_mode, validate_secrets, verify_password
 from jose import JWTError, jwt
 from database import fetch_one, execute, init_pool
 from models.alert import LoginRequest, TokenRefresh
@@ -46,11 +46,29 @@ def startup() -> None:
     """Initialise app dependencies."""
     validate_secrets()
     init_pool()
+    ensure_local_user()
+
+
+@app.get('/api/v1/app/config')
+def app_config():
+    """Expose runtime mode to the SPA."""
+    return {
+        'local_mode': is_local_mode(),
+        'auth_enabled': not is_local_mode(),
+        'version': APP_VERSION,
+    }
 
 
 @app.post('/api/v1/auth/login')
 async def login(request: Request, body: LoginRequest):
     """Authenticate and return access plus refresh tokens."""
+    if is_local_mode():
+        username = current_user()['username']
+        return {
+            'access_token': create_token(username, 'access', 60),
+            'refresh_token': create_token(username, 'refresh', 7 * 1440),
+            'token_type': 'bearer',
+        }
     ip = request.client.host if request.client else 'unknown'
     now = time.time()
     attempts = _login_attempts[ip]
@@ -81,6 +99,9 @@ async def login(request: Request, body: LoginRequest):
 @app.post('/api/v1/auth/refresh')
 def refresh(body: TokenRefresh):
     """Refresh an access token."""
+    if is_local_mode():
+        username = current_user()['username']
+        return {'access_token': create_token(username, 'access', 60)}
     from jose import jwt, JWTError
     try:
         payload = jwt.decode(body.refresh_token, os.getenv('JWT_SECRET', ''), algorithms=['HS256'])
@@ -103,14 +124,15 @@ def refresh(body: TokenRefresh):
 async def live(ws: WebSocket):
     """Accept authenticated live WebSocket clients."""
     token = ws.query_params.get('token', '')
-    try:
-        payload = jwt.decode(token, os.getenv('JWT_SECRET', ''), algorithms=['HS256'])
-        if payload.get('type') != 'access':
+    if not is_local_mode():
+        try:
+            payload = jwt.decode(token, os.getenv('JWT_SECRET', ''), algorithms=['HS256'])
+            if payload.get('type') != 'access':
+                await ws.close(code=4001)
+                return
+        except JWTError:
             await ws.close(code=4001)
             return
-    except JWTError:
-        await ws.close(code=4001)
-        return
 
     await ws.accept()
     async with _sockets_lock:

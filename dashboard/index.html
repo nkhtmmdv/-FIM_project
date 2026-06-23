@@ -236,15 +236,17 @@
         </div>
 
         <div class="panel">
-          <h2 class="mb-8">My Profile &amp; Personal Telegram</h2>
-          <p style="color:var(--muted);font-size:12px;margin-bottom:12px">Alerts for files you added will arrive <b>only in your Telegram</b>.</p>
+          <h2 class="mb-8">Profile &amp; Telegram Alerts</h2>
+          <p id="profileHelpText" style="color:var(--muted);font-size:12px;margin-bottom:12px">Alerts for files you add can be delivered to your Telegram chat.</p>
           <input class="input" id="tgToken" placeholder="Your Bot Token (from @BotFather)" style="margin-bottom:4px">
           <div id="tgTokenIndicator" style="font-size:11px;color:#4ade80;margin-bottom:6px;min-height:16px"></div>
           <input class="input" id="tgChat" placeholder="Your Chat ID (numeric)" style="margin-bottom:12px">
-          <hr style="border:none;border-top:1px solid rgba(255,255,255,.07);margin:12px 0">
-          <p style="color:var(--muted);font-size:12px;margin-bottom:8px">Change password (optional)</p>
-          <input class="input" id="profCurPass" placeholder="Current password" type="password" style="margin-bottom:8px">
-          <input class="input" id="profNewPass" placeholder="New password (min 8 chars)" type="password" style="margin-bottom:12px">
+          <div id="passwordSection">
+            <hr style="border:none;border-top:1px solid rgba(255,255,255,.07);margin:12px 0">
+            <p style="color:var(--muted);font-size:12px;margin-bottom:8px">Change password (optional)</p>
+            <input class="input" id="profCurPass" placeholder="Current password" type="password" style="margin-bottom:8px">
+            <input class="input" id="profNewPass" placeholder="New password (min 8 chars)" type="password" style="margin-bottom:12px">
+          </div>
           <div class="row gap-sm">
             <button class="btn primary" onclick="saveProfile()">Save Profile</button>
             <button class="btn" onclick="testTelegramPersonal()">Test Telegram</button>
@@ -287,8 +289,8 @@
 </div>
 
 <!-- Scripts -->
-<script src="/js/websocket.js?v=12"></script>
+<script src="/js/websocket.js?v=13"></script>
 <script src="/js/charts.js?v=12"></script>
-<script src="/js/app.js?v=15"></script>
+<script src="/js/app.js?v=16"></script>
 </body>
 </html>

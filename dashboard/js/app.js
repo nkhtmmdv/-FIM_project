@@ -7,6 +7,7 @@
    Constants & State
    ========================================================= */
 const API = '/api/v1';
+let LOCAL_MODE = false;
 let token = localStorage.getItem('fimToken') || '';
 let currentPage = 'dashboard';
 let scanInterval = 30;
@@ -16,124 +17,23 @@ let alertsPageOffset = 0;
 let filesPageOffset = 0;
 let tokenIsSet = false;   // true when a Telegram token is already saved in DB
 const PAGE_SIZE = 50;
-let authBootMessage = '';
 
 /** Promise-based sleep. */
 function sleep(ms) { return new Promise(function(r) { setTimeout(r, ms); }); }
 
-/** Decode JWT payload without signature verification. */
-function parseJwtPayload(jwt) {
+/** In local mode the dashboard is always treated as authenticated. */
+function isLoggedIn() {
+    return LOCAL_MODE || !!token;
+}
+
+/** Read runtime mode from the backend so UI matches server config. */
+async function loadAppConfig() {
     try {
-        var parts = jwt.split('.');
-        if (parts.length !== 3) return null;
-        var payload = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-        while (payload.length % 4) payload += '=';
-        return JSON.parse(atob(payload));
-    } catch (e) {
-        return null;
-    }
-}
-
-/** True if access token exists, is correct type, and not expired. */
-function isAccessTokenValid(tok) {
-    if (!tok) return false;
-    var p = parseJwtPayload(tok);
-    if (!p || p.type !== 'access') return false;
-    if (p.exp && p.exp * 1000 <= Date.now()) return false;
-    return true;
-}
-
-/** Clear stored credentials and stop live updates. */
-function clearAuth() {
-    token = '';
-    localStorage.removeItem('fimToken');
-    localStorage.removeItem('fimRefresh');
-    stopWS();
-}
-
-/** Parse response body safely; never throws on HTML/plain-text errors. */
-async function parseApiResponse(r) {
-    var text = await r.text();
-    if (!text) {
-        return { data: null, error: r.ok ? null : 'Request failed (' + r.status + ')' };
-    }
-    try {
-        return { data: JSON.parse(text), error: null };
-    } catch (e) {
-        var msg = r.status === 502 || r.status === 503
-            ? 'Server unavailable'
-            : 'Invalid server response (' + r.status + ')';
-        return { data: null, error: msg };
-    }
-}
-
-/** Extract FastAPI error detail from parsed JSON. */
-function apiErrorMessage(data, fallback) {
-    if (!data || !data.detail) return fallback;
-    if (Array.isArray(data.detail)) {
-        return data.detail.map(function (e) { return e.msg || JSON.stringify(e); }).join(', ');
-    }
-    return String(data.detail);
-}
-
-/**
- * Restore session from localStorage: refresh if needed, verify with server.
- * @returns {Promise<boolean>}
- */
-async function ensureAuth() {
-    authBootMessage = '';
-    if (!token && localStorage.getItem('fimRefresh')) {
-        await _tryRefresh();
-    }
-    if (!token) return false;
-    if (!isAccessTokenValid(token)) {
-        if (localStorage.getItem('fimRefresh')) {
-            var refreshed = await _tryRefresh();
-            if (!(refreshed && isAccessTokenValid(token))) {
-                clearAuth();
-                authBootMessage = 'Session expired — please sign in again';
-                return false;
-            }
-        } else {
-            clearAuth();
-            authBootMessage = 'Session expired — please sign in again';
-            return false;
-        }
-    }
-    var check = await _verifyAuthWithServer();
-    if (!check.ok) {
-        clearAuth();
-        if (check.reason === 'network') {
-            authBootMessage = 'Server unavailable — check that the API is running';
-        } else if (check.reason === 'session') {
-            authBootMessage = 'Session expired — please sign in again';
-        } else {
-            authBootMessage = 'Server unavailable — check that the API is running';
-        }
-        return false;
-    }
-    return true;
-}
-
-/** Confirm the access token is accepted by the API. */
-async function _verifyAuthWithServer() {
-    try {
-        var r = await fetch(API + '/auth/profile', {
-            headers: { 'Authorization': 'Bearer ' + token }
-        });
-        if (r.status === 401) {
-            if (await _tryRefresh()) {
-                r = await fetch(API + '/auth/profile', {
-                    headers: { 'Authorization': 'Bearer ' + token }
-                });
-            }
-        }
-        if (r.ok) return { ok: true };
-        if (r.status === 401) return { ok: false, reason: 'session' };
-        return { ok: false, reason: 'server' };
-    } catch (e) {
-        return { ok: false, reason: 'network' };
-    }
+        var r = await fetch(API + '/app/config');
+        if (!r.ok) return;
+        var data = await r.json();
+        LOCAL_MODE = !!(data && data.local_mode);
+    } catch (e) {}
 }
 
 /* =========================================================
@@ -149,34 +49,27 @@ async function _verifyAuthWithServer() {
 async function api(path, opts) {
     opts = opts || {};
     var headers = {
-        'Content-Type': 'application/json',
-        'Authorization': token ? 'Bearer ' + token : ''
+        'Content-Type': 'application/json'
     };
+    if (token) headers['Authorization'] = 'Bearer ' + token;
     if (opts.headers) {
         Object.keys(opts.headers).forEach(function (k) { headers[k] = opts.headers[k]; });
     }
     opts.headers = headers;
     var r = await fetch(API + path, opts);
-    if (r.status === 401 || r.status === 403) {
+    if (!LOCAL_MODE && r.status === 401) {
+        // Try to refresh the access token once
         var refreshed = await _tryRefresh();
-        if (!refreshed) {
-            clearAuth();
-            location.hash = '#login';
-            showPage('login');
-            return null;
-        }
+        if (!refreshed) { showPage('login'); return null; }
         opts.headers['Authorization'] = 'Bearer ' + token;
         r = await fetch(API + path, opts);
-        if (r.status === 401 || r.status === 403) {
-            clearAuth();
-            location.hash = '#login';
-            showPage('login');
-            return null;
-        }
+        if (r.status === 401) { showPage('login'); return null; }
     }
-    var parsed = await parseApiResponse(r);
-    if (!r.ok && parsed.error) return null;
-    return parsed.data;
+    try {
+        return await r.json();
+    } catch (e) {
+        return null;
+    }
 }
 
 /**
@@ -184,6 +77,7 @@ async function api(path, opts) {
  * @returns {Promise<boolean>} true if refresh succeeded
  */
 async function _tryRefresh() {
+    if (LOCAL_MODE) return true;
     var rt = localStorage.getItem('fimRefresh');
     if (!rt) return false;
     try {
@@ -192,13 +86,10 @@ async function _tryRefresh() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ refresh_token: rt })
         });
-        if (!r.ok) {
-            if (r.status === 401) localStorage.removeItem('fimRefresh');
-            return false;
-        }
-        var parsed = await parseApiResponse(r);
-        if (parsed.data && parsed.data.access_token) {
-            token = parsed.data.access_token;
+        if (!r.ok) return false;
+        var data = await r.json();
+        if (data && data.access_token) {
+            token = data.access_token;
             localStorage.setItem('fimToken', token);
             return true;
         }
@@ -215,6 +106,7 @@ async function _tryRefresh() {
  * @param {string} page - Page name (dashboard, alerts, history, settings, login)
  */
 function showPage(page) {
+    if (LOCAL_MODE && page === 'login') page = 'dashboard';
     currentPage = page;
     document.querySelectorAll('.page').forEach(function (el) { el.classList.remove('active'); });
     var target = document.getElementById('page-' + page);
@@ -224,39 +116,26 @@ function showPage(page) {
         a.classList.toggle('active', a.getAttribute('data-page') === page);
     });
 
-    var isLoggedIn = isAccessTokenValid(token);
+    var loggedIn = isLoggedIn();
     document.querySelector('.nav').style.display = (page === 'login') ? 'none' : '';
 
-    if (page === 'login' && authBootMessage) {
-        var bootErr = document.getElementById('loginError');
-        if (bootErr) {
-            bootErr.textContent = authBootMessage;
-            bootErr.style.display = '';
-        }
-        authBootMessage = '';
-    }
-
-    if (page === 'dashboard' && isLoggedIn) loadDashboard();
-    else if (page === 'alerts' && isLoggedIn) loadAlerts();
-    else if (page === 'history' && isLoggedIn) loadHistory();
-    else if (page === 'settings' && isLoggedIn) loadSettings();
+    if (page === 'dashboard' && loggedIn) loadDashboard();
+    else if (page === 'alerts' && loggedIn) loadAlerts();
+    else if (page === 'history' && loggedIn) loadHistory();
+    else if (page === 'settings' && loggedIn) loadSettings();
 }
 
 /**
  * Hash-based route handler.
  */
 function route() {
-    var hash = location.hash.replace('#', '');
-    if (!isAccessTokenValid(token)) {
-        if (hash && hash !== 'login') location.hash = '#login';
-        showPage('login');
-        return;
-    }
-    if (!hash || hash === 'login') {
-        location.hash = '#dashboard';
+    var hash = location.hash.replace('#', '') || 'dashboard';
+    if (LOCAL_MODE && (!hash || hash === 'login')) {
+        if (location.hash !== '#dashboard') location.hash = '#dashboard';
         showPage('dashboard');
         return;
     }
+    if (!LOCAL_MODE && !token && hash !== 'login') { showPage('login'); return; }
     showPage(hash);
 }
 
@@ -318,10 +197,7 @@ function esc(s) {
  */
 async function loadDashboard() {
     var s = await api('/stats/summary');
-    if (!s) {
-        if (isAccessTokenValid(token)) showToast('Failed to load dashboard — server may be unavailable', 'error');
-        return;
-    }
+    if (!s) return;
     animateNum('total', s.total_files);
     animateNum('clean', Math.max(0, s.clean || 0));
     animateNum('alertCount', s.alerts);
@@ -672,7 +548,9 @@ async function loadSettings() {
     }
 
     // Load personal Telegram credentials from user profile
-    var prof = await fetch(API + '/auth/profile', { headers: { 'Authorization': 'Bearer ' + token } });
+    var profHeaders = {};
+    if (token) profHeaders['Authorization'] = 'Bearer ' + token;
+    var prof = await fetch(API + '/auth/profile', { headers: profHeaders });
     if (prof.ok) {
         var p = await prof.json();
         if (p.telegram_chat_id) document.getElementById('tgChat').value = p.telegram_chat_id;
@@ -762,9 +640,11 @@ async function purgeFile(encodedPath) {
     console.log('[PURGE] DELETE', url);
     var r;
     try {
+        var headers = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = 'Bearer ' + token;
         r = await fetch(url, {
             method: 'DELETE',
-            headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }
+            headers: headers
         });
     } catch (e) {
         console.error('[PURGE] network error', e);
@@ -883,6 +763,12 @@ async function exportBaseline() {
  * @param {string} [forcePass] - Optional password override
  */
 async function login(forceUser, forcePass) {
+    if (LOCAL_MODE) {
+        location.hash = '#dashboard';
+        route();
+        if (!socket) startWS();
+        return;
+    }
     var user = forceUser || document.getElementById('loginUser').value.trim();
     var pass = forcePass || document.getElementById('loginPass').value;
     var errEl = document.getElementById('loginError');
@@ -904,8 +790,7 @@ async function login(forceUser, forcePass) {
         if (errEl) { errEl.textContent = 'Server unavailable'; errEl.style.display = ''; }
         return;
     }
-    var parsed = await parseApiResponse(r);
-    var data = parsed.data;
+    var data = await r.json();
     if (r.ok && data && data.access_token) {
         token = data.access_token;
         localStorage.setItem('fimToken', token);
@@ -914,7 +799,14 @@ async function login(forceUser, forcePass) {
         route();
         if (!socket) startWS();
     } else {
-        var msg = parsed.error || apiErrorMessage(data, 'Login failed');
+        var msg = 'Login failed';
+        if (data && data.detail) {
+            if (Array.isArray(data.detail)) {
+                msg = data.detail.map(function(e){ return e.msg || JSON.stringify(e); }).join(', ');
+            } else {
+                msg = data.detail;
+            }
+        }
         if (errEl) { errEl.textContent = msg; errEl.style.display = ''; }
     }
 }
@@ -935,6 +827,10 @@ function showLogin() {
  * Register a new account and auto-login.
  */
 async function register() {
+    if (LOCAL_MODE) {
+        showToast('Registration is disabled in local mode', 'warning');
+        return;
+    }
     var errEl = document.getElementById('regError');
     errEl.style.display = 'none';
     var username = document.getElementById('regUser').value.trim();
@@ -952,13 +848,12 @@ async function register() {
     } catch (e) {
         errEl.textContent = 'Server unavailable'; errEl.style.display = ''; return;
     }
-    var parsed = await parseApiResponse(r);
-    var data = parsed.data;
+    var data = await r.json();
     if (r.ok && data.ok) {
         showLogin();
         await login(username, password);
     } else {
-        errEl.textContent = parsed.error || apiErrorMessage(data, 'Registration failed');
+        errEl.textContent = data.detail || 'Registration failed';
         errEl.style.display = '';
     }
 }
@@ -967,8 +862,16 @@ async function register() {
  * Logout and redirect to login page.
  */
 function logout() {
-    clearAuth();
-    location.hash = '#login';
+    if (LOCAL_MODE) {
+        showToast('Local mode is enabled — logout is disabled', 'warning');
+        location.hash = '#dashboard';
+        showPage('dashboard');
+        return;
+    }
+    token = '';
+    localStorage.removeItem('fimToken');
+    localStorage.removeItem('fimRefresh');
+    stopWS();
     showPage('login');
 }
 
@@ -1045,9 +948,11 @@ async function saveProfile() {
         current_password:   curPass,
         new_password:       newPass
     };
+    var headers = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = 'Bearer ' + token;
     var r = await fetch(API + '/auth/profile', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+        headers: headers,
         body: JSON.stringify(body)
     });
     var data = await r.json();
@@ -1077,9 +982,11 @@ async function testTelegramPersonal() {
     }
     // If a new token was typed save it first; otherwise use the existing DB token
     if (tgToken) { await saveProfile(); }
+    var headers = {};
+    if (token) headers['Authorization'] = 'Bearer ' + token;
     var res = await fetch(API + '/auth/test-telegram', {
         method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + token }
+        headers: headers
     });
     var data = await res.json();
     if (data && data.ok) {
@@ -1225,12 +1132,26 @@ window.addEventListener('fim-live', function (e) {
    Initialization
    ========================================================= */
 
-window.addEventListener('load', async function () {
-    if (Notification.permission === 'default') Notification.requestPermission();
-    initFileTabs();
-    initFileSearch();
-    window.addEventListener('hashchange', route);
-    await ensureAuth();
-    route();
-    if (isAccessTokenValid(token)) startWS();
+window.addEventListener('load', function () {
+    (async function () {
+        if (Notification.permission === 'default') Notification.requestPermission();
+        initFileTabs();
+        initFileSearch();
+        await loadAppConfig();
+        window.addEventListener('hashchange', route);
+        if (LOCAL_MODE) {
+            var logoutBtn = document.getElementById('logoutBtn');
+            if (logoutBtn) logoutBtn.style.display = 'none';
+            var loginPage = document.getElementById('page-login');
+            if (loginPage) loginPage.style.display = 'none';
+            var passwordSection = document.getElementById('passwordSection');
+            if (passwordSection) passwordSection.style.display = 'none';
+            var profileHelpText = document.getElementById('profileHelpText');
+            if (profileHelpText) {
+                profileHelpText.textContent = 'This installation runs in single-user local mode. Configure Telegram here if you want alert delivery.';
+            }
+        }
+        route();
+        if (LOCAL_MODE || token) startWS();
+    })();
 });

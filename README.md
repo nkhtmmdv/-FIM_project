@@ -1,102 +1,185 @@
-# FIM Sentinel
+ # FIM Sentinel
 
-> **File Integrity Monitor** — real-time protection of your Linux system against unauthorized file changes.
+> File Integrity Monitor for Linux hosts, packaged as a local Docker application.
 
-FIM Sentinel watches your critical files and any files you add, instantly detects any modification, and sends alerts to Telegram. Every user runs it **completely locally** — your data never leaves your machine.
+FIM Sentinel watches critical files and directories, compares them against a baseline, stores change history, and shows the results in a web dashboard with optional Telegram alerts.
+
+The default installation is **single-user local mode**:
+- no account creation on first run;
+- no login screen in the normal setup;
+- open `http://localhost:8080` and go straight to the dashboard.
 
 ---
 
-## How It Works
+## What You Get
 
+- Real-time dashboard with scan status, recent alerts, and history
+- Recursive monitoring of files and directories
+- Baseline creation and reset from the UI
+- Manual scan trigger
+- Telegram alert delivery
+- Docker-based deployment with PostgreSQL, API, scanner, and dashboard
+
+---
+
+## Architecture
+
+```text
+Host filesystem (read-only mount)
+        |
+        v
+   Scanner container  --->  PostgreSQL
+        |                       |
+        v                       v
+     FastAPI  <------------  Dashboard (nginx + JS SPA)
+        |
+        v
+   Optional Telegram alerts
 ```
- Your files (/etc/passwd, /home/user/file.txt, /root/.bashrc, ...)
-          │
-   [ Scanner ] ──── every N seconds ────► compares against baseline
-          │                                        │
-    change detected?                         everything OK?
-          │                                        │
-    ► Telegram alert                    ► waits for next scan silently
-    ► stored in database
-    ► shown in dashboard
-```
 
-**Components:**
-- **Scanner** — hashes files, compares to baseline, dispatches alerts
-- **API** — JWT-secured REST + WebSocket endpoints
-- **Dashboard** — dark-mode web UI with live updates, charts, and CSV export
-- **PostgreSQL** — stores baseline, events, users, and full audit log
-
-All components run in Docker. The database is isolated on an internal network with no internet access. The scanner mounts the **entire host filesystem** read-only so it can monitor any file you add.
+Components:
+- `scanner` scans mounted host paths and records changes
+- `api` exposes REST and WebSocket endpoints
+- `dashboard` serves the SPA and proxies `/api` and `/ws/live`
+- `postgres` stores baseline, events, settings, and audit records
 
 ---
 
 ## Requirements
 
-- Linux (Debian, Ubuntu, Kali, CentOS, etc.)
-- [Docker](https://docs.docker.com/engine/install/) + Docker Compose v2
-- `git`, `openssl` (usually pre-installed)
-- Root access (sudo)
+- Linux host
+- Docker Engine + Docker Compose v2
+- `git`
+- `sudo` access
+
+This project is intended to run on Linux because the scanner mounts the host filesystem directly into the container.
 
 ---
 
-## Installation
-
-### One-Command Install (recommended)
-
-```bash
-# 1. Clone the repository
-git clone https://github.com/nkhtmmdv/-FIM_project.git
-cd -FIM_project
-
-# 2. Run the installer (once)
-sudo bash install.sh
-```
-
-The installer automatically:
-- Generates **unique random passwords and secrets** for your machine (no two installs share credentials)
-- Registers **autostart** on system boot via systemd
-- Launches all containers
-- Creates the `fim` command for control from anywhere in the terminal
-- Configures the browser to open the dashboard automatically on desktop login
-
-Once done, open your browser at **`http://localhost:8080`**.
-
-### Manual Install (without installer)
+## Quick Start
 
 ```bash
 git clone https://github.com/nkhtmmdv/-FIM_project.git
 cd -FIM_project
-
-# Generate secrets
 cp .env.example .env
-sed -i "s/^JWT_SECRET=.*/JWT_SECRET=$(openssl rand -hex 32)/" .env
-sed -i "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$(openssl rand -hex 16)/" .env
-
-# Start
 docker compose up -d --build
 ```
 
----
+Then open:
 
-## First Run
-
-1. Open **`http://localhost:8080`**
-2. Click **Register** and create your account
-3. Log in
-4. Go to **Settings** → click **Create Baseline**
-   - This snapshots the current state of all monitored files as "normal"
-   - Must be done before any alerts can fire
-5. Add files or directories to monitor in **Settings → Monitored Files**
-6. Configure Telegram alerts (see below)
-
----
-
-## Adding Files to Monitor
-
-You can monitor **any file or directory** on your system — not just system files.
-
-**Examples of paths you can add:**
+```text
+http://localhost:8080
 ```
+
+In the default configuration, the dashboard should open immediately without a login step.
+
+---
+
+## First Run Checklist
+
+1. Open `http://localhost:8080`
+2. Go to `Settings`
+3. Click `Create New Baseline`
+4. Add any extra files or directories you want to monitor
+5. If you add new paths, create the baseline again
+6. Optionally configure Telegram alerts
+
+Important:
+- Alerts are meaningful only after a baseline exists.
+- Directories are monitored recursively.
+
+---
+
+## Default Mode
+
+The repository ships with:
+
+```env
+LOCAL_MODE=true
+LOCAL_USERNAME=local-user
+```
+
+That means:
+- the app behaves like a local desktop-style tool;
+- all API routes work for one local user automatically;
+- the login/register flow is not required for normal use.
+
+If you want to experiment with multi-user auth later, you can switch to:
+
+```env
+LOCAL_MODE=false
+```
+
+In auth mode, JWT-based login becomes active again and the frontend will show the login page.
+
+---
+
+## Environment Setup
+
+Minimal variables for local mode are already present in `.env.example`.
+
+Typical setup:
+
+```env
+POSTGRES_HOST=postgres
+POSTGRES_DB=fim
+POSTGRES_USER=fim_app
+POSTGRES_PASSWORD=ReplaceThisWithAStrongPassword123!
+CORS_ORIGINS=*
+LOCAL_MODE=true
+LOCAL_USERNAME=local-user
+API_PORT=8000
+HTTP_PORT=8080
+SCAN_INTERVAL_SECONDS=120
+```
+
+Notes:
+- `POSTGRES_PASSWORD` must be set
+- `JWT_SECRET` matters only when `LOCAL_MODE=false`
+- `HTTP_PORT` controls the dashboard port exposed on the host
+
+---
+
+## Docker Compose Services
+
+`docker-compose.yml` starts four services:
+
+- `postgres` for persistent storage
+- `scanner` for filesystem monitoring
+- `api` for REST/WebSocket endpoints
+- `dashboard` for the browser UI
+
+Start:
+
+```bash
+docker compose up -d --build
+```
+
+Stop:
+
+```bash
+docker compose down
+```
+
+See status:
+
+```bash
+docker compose ps
+```
+
+See logs:
+
+```bash
+docker compose logs -f
+```
+
+---
+
+## Adding Files To Monitor
+
+Examples:
+
+```text
 /etc/passwd
 /etc/hosts
 /home/kali/important.txt
@@ -105,159 +188,155 @@ You can monitor **any file or directory** on your system — not just system fil
 /var/www/html/index.php
 ```
 
-**How to add:**
-1. Go to **Settings → Monitored Files**
-2. Type the full absolute path (e.g. `/home/kali/myfile.txt`)
-3. Choose severity: `CRITICAL`, `WARNING`, or `INFO`
-4. Click **+ Add**
-5. After adding, click **Settings → Create Baseline** so the scanner records the current state
+How to add them:
+1. Open `Settings`
+2. Enter the absolute path
+3. Choose severity
+4. Click `+ Add`
+5. Recreate the baseline if needed
 
-> **Note:** Directories are scanned recursively — adding `/home/kali` will monitor all files inside it.
-
----
-
-## Telegram Alert Setup
-
-1. Open Telegram → find **@BotFather** → send `/newbot`
-2. Choose a display name (e.g. `My FIM Bot`) and a username ending in `bot`
-3. BotFather replies with a token like `123456789:AAF...` — copy it
-4. Start a chat with your new bot (find it in Telegram, press **Start**)
-5. Get your Chat ID — open this URL in a browser:
-   ```
-   https://api.telegram.org/bot<YOUR_TOKEN>/getUpdates
-   ```
-   Find `"chat":{"id": 123456789}` — that number is your Chat ID
-6. In the dashboard go to **Settings → Telegram** → paste the token and Chat ID → click **Save** → **Test**
-
-Alerts fire after **every scan** for unacknowledged changes.
+Default monitored directories are inserted from `db/init.sql` on first database creation.
 
 ---
 
-## Managing FIM Sentinel
+## Telegram Alerts
 
-After installation, use the `fim` command from anywhere in the terminal:
+Telegram alerts are optional.
 
-```bash
-fim status    # show running container status
-fim start     # start all containers
-fim stop      # stop all containers
-fim restart   # restart all containers
-fim logs      # stream live logs
-fim update    # pull latest version and rebuild
-```
+Setup steps:
+1. Create a bot with `@BotFather`
+2. Start a chat with the bot
+3. Get your Chat ID from `getUpdates`
+4. Open `Settings`
+5. Enter bot token and chat ID
+6. Click `Save Profile`
+7. Click `Test Telegram`
 
-### Updating
-
-```bash
-fim update
-```
-
-Pulls the latest version from git and rebuilds all containers automatically.
-
-> **After an update:** if `JWT_SECRET` in your `.env` is shorter than 64 characters, the API will not start.
-> Fix: `sed -i "s/^JWT_SECRET=.*/JWT_SECRET=$(openssl rand -hex 32)/" .env && docker compose up -d --force-recreate api`
+In local mode, this configuration is stored for the single local user.
 
 ---
 
 ## Dashboard Guide
 
-### Dashboard (home)
-- File count, alert count, last scan time
-- Countdown timer to the next scan
-- Recent events feed
-- 24-hour alert timeline chart
+### Dashboard
+- summary counters
+- recent alerts
+- timeline chart
+- next scan indicator
 
 ### Alerts
-- Full list of all detected changes
-- Filter by severity, event type, or file path
-- **Acknowledge** button — marks the alert as reviewed; it will no longer appear in the active alerts list
-- Export to CSV
+- full alert list
+- filters by severity, event type, and path
+- acknowledge actions
+- CSV export
 
 ### History
-- Full scan history with per-scan details: files scanned, changes found, duration
+- scan run history
+- per-scan change details
 
 ### Settings
-
-| Section | Description |
-|---|---|
-| Monitored Files | Add / remove files and directories to watch |
-| Baseline Management | Create or reset the baseline snapshot |
-| Telegram | Your personal bot token and Chat ID for alerts |
-| Scan Interval | How often to scan (in seconds, minimum 10) |
+- monitored paths
+- scan interval and alert toggles
+- Telegram configuration
+- baseline controls
 
 ---
 
-## Alert Types
+## Security Model
 
-| Event | Description |
-|---|---|
-| `ADDED` | A new file appeared that was not in the baseline |
-| `MODIFIED` | File content (hash) changed |
-| `DELETED` | A monitored file was removed |
-| `PERMISSIONS_CHANGED` | File permissions changed |
-| `OWNER_CHANGED` | File ownership changed |
-| `MODIFIED_WITH_OWNER_CHANGE` | Content and ownership both changed |
+Default mode is designed for a local single user on their own machine.
 
-**Alert behaviour:**
-- Telegram fires for each new unacknowledged change after every scan
-- Pressing **Acknowledge** marks the alert as reviewed — it moves out of the active list
-- After acknowledging, press **Create Baseline** to make the new state the new normal
+In that mode:
+- data stays local;
+- no browser login is required;
+- scanner mounts the host filesystem read-only;
+- database is internal to Docker;
+- Telegram is the only optional external integration.
 
-**Severity levels:**
+When `LOCAL_MODE=false`, the project also supports:
+- JWT access and refresh tokens
+- user registration and login
+- password hashing with bcrypt
 
-| Level | Colour | Default for |
+---
+
+## API Notes
+
+Useful endpoints in local mode:
+
+| Method | Endpoint | Purpose |
 |---|---|---|
-| CRITICAL | Red | `/bin`, `/sbin`, `/etc`, `/root` |
-| WARNING | Yellow | `/home`, `/var/log`, `/opt` |
-| INFO | Blue | Everything else |
+| GET | `/api/v1/app/config` | frontend runtime mode |
+| GET | `/api/v1/stats/summary` | dashboard counters |
+| GET | `/api/v1/files` | monitored files |
+| GET | `/api/v1/alerts` | alert history |
+| POST | `/api/v1/files/add` | add monitored path |
+| POST | `/api/v1/baseline/create` | create baseline |
+| POST | `/api/v1/scan/trigger` | trigger manual scan |
+| WS | `/ws/live` | live updates |
 
----
-
-## Security
-
-- **Data** — stored locally only; never sent to any external server (except Telegram alerts you configure)
-- **Credentials** — each install generates unique random passwords via `openssl rand`
-- **JWT** — HS256, minimum 64-character secret, 1-hour access tokens, 7-day refresh tokens
-- **User passwords** — bcrypt, cost factor 12, maximum 72 bytes
-- **Rate limiting** — login endpoint blocks after 10 failed attempts per IP per minute
-- **Filesystem** — scanner mounts host files read-only; cannot modify them
-- **SQL** — parameterised queries everywhere; SQL injection is not possible
-- **Audit log** — every user action (login, file add/remove, baseline reset, alert acknowledge) is recorded with IP address
-
----
-
-## API Reference
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/v1/auth/login` | Authenticate, receive JWT tokens |
-| POST | `/api/v1/auth/register` | Create a new account |
-| GET | `/api/v1/files` | List monitored files |
-| POST | `/api/v1/files/add` | Add a file or directory to monitoring |
-| DELETE | `/api/v1/files/{path}` | Remove a file from monitoring |
-| GET | `/api/v1/alerts` | List alerts (filterable by severity, type, path) |
-| PUT | `/api/v1/alerts/{id}/acknowledge` | Acknowledge an alert |
-| POST | `/api/v1/baseline/create` | Create a new baseline |
-| GET | `/api/v1/baseline/status` | Baseline metadata |
-| POST | `/api/v1/scan/trigger` | Trigger an immediate scan |
-| GET | `/api/v1/stats/summary` | Dashboard summary counters |
-| WS | `/ws/live` | Real-time event stream |
-
-All requests except `login` and `register` require:
-```
-Authorization: Bearer <your_token>
-```
+In local mode these routes work without manual authentication in the browser.
 
 ---
 
 ## Troubleshooting
 
-**Cannot log in**
-→ Check containers are running: `fim status`
-→ View API logs: `docker logs fim_project-api-1 --tail 30`
-→ If you see `JWT_SECRET must be at least 64 characters`:
+### Dashboard does not open
+
+Check that containers are running:
+
 ```bash
-sed -i "s/^JWT_SECRET=.*/JWT_SECRET=$(openssl rand -hex 32)/" .env
+docker compose ps
+```
+
+### Dashboard opens but shows no data
+
+Check API and scanner logs:
+
+```bash
+docker compose logs api
+docker compose logs scanner
+```
+
+### No alerts appear
+
+Most often, the baseline has not been created yet. Open `Settings` and create it first.
+
+### Changes are not detected for a new path
+
+- make sure the path is absolute;
+- make sure it exists on the host;
+- recreate the baseline after adding it.
+
+### Port 8080 is busy
+
+Change this in `.env`:
+
+```env
+HTTP_PORT=8081
+```
+
+Then restart:
+
+```bash
+docker compose up -d --build
+```
+
+### You want the old login-based behavior
+
+Set:
+
+```env
+LOCAL_MODE=false
+```
+
+Then restart the stack.
+
+---
+
+## Project Goal
+
+This repository is meant to behave like a usable local application, not just a classroom prototype. The default setup is optimized for reviewers and end users who clone the repo, follow the instructions, and expect the program to run predictably on first launch.
 docker compose up -d --force-recreate api
 ```
 → After changing `JWT_SECRET`, clear browser localStorage (F12 → Application → Local Storage → Clear) and log in again

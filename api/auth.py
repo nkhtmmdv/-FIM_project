@@ -10,15 +10,23 @@ from passlib.context import CryptContext
 from database import execute, fetch_one
 
 ALGORITHM = 'HS256'
-SECURITY = HTTPBearer()
+SECURITY = HTTPBearer(auto_error=False)
 PWD = CryptContext(schemes=['bcrypt'], deprecated='auto', bcrypt__rounds=12)
+
+
+def is_local_mode() -> bool:
+    """Return True when the app runs in single-user local mode."""
+    return os.getenv('LOCAL_MODE', 'true').strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
+def local_username() -> str:
+    """Return the synthetic username used in local mode."""
+    return os.getenv('LOCAL_USERNAME', 'local-user').strip() or 'local-user'
 
 
 def validate_secrets() -> None:
     """Validate minimum secret lengths, warn instead of crashing."""
-    import logging
-
-    if len(os.getenv('JWT_SECRET', '')) < 64:
+    if not is_local_mode() and len(os.getenv('JWT_SECRET', '')) < 64:
         raise RuntimeError('JWT_SECRET must be at least 64 characters — set it in .env')
     if not os.getenv('POSTGRES_PASSWORD', ''):
         raise RuntimeError('POSTGRES_PASSWORD must be set in .env')
@@ -38,6 +46,8 @@ def verify_password(password: str, hashed: str) -> bool:
 
 def create_token(username: str, kind: str, minutes: int) -> str:
     """Create a signed JWT."""
+    if is_local_mode():
+        return 'local-mode-token'
     exp = datetime.now(timezone.utc) + timedelta(minutes=minutes)
     return jwt.encode(
         {'sub': username, 'type': kind, 'exp': exp},
@@ -46,8 +56,26 @@ def create_token(username: str, kind: str, minutes: int) -> str:
     )
 
 
-def current_user(creds: HTTPAuthorizationCredentials = Depends(SECURITY)) -> Dict[str, str]:
+def ensure_local_user() -> None:
+    """Create the synthetic single-user profile used by local mode."""
+    if not is_local_mode():
+        return
+    username = local_username()
+    row = fetch_one('SELECT id FROM users WHERE username=%s', (username,))
+    if row:
+        return
+    execute(
+        'INSERT INTO users(username, password_hash, role) VALUES(%s, %s, %s)',
+        (username, hash_password('local-mode-disabled'), 'local'),
+    )
+
+
+def current_user(creds: HTTPAuthorizationCredentials | None = Depends(SECURITY)) -> Dict[str, str]:
     """Return authenticated user from bearer token."""
+    if is_local_mode():
+        return {'username': local_username()}
+    if creds is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='missing token')
     try:
         payload = jwt.decode(creds.credentials, os.getenv('JWT_SECRET', ''), algorithms=[ALGORITHM])
     except JWTError as exc:
