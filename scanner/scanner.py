@@ -128,8 +128,12 @@ def run_scan(triggered_by: str = 'scheduler', reset_baseline: bool = False) -> i
         events, stats = compare(scan_id, snaps, db.load_baseline(), db.severities(), cfg)
         stats['duration_ms'] = int((time.time() - started) * 1000)
         db.finish_scan(scan_id, stats, 'COMPLETE')
-        # events now contains only genuinely new findings (not already-known unacked duplicates)
+        # Repeat alerting policy:
+        # - send NEW findings from this scan
+        # - also re-send any still-unacknowledged alerts from previous scans
+        #   until the user acknowledges them or creates a new baseline
         alerts = list(events)
+        alerts.extend(db.get_unacked_open_changes(scan_id))
 
         alerter.dispatch(alerts)
 

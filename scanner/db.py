@@ -91,6 +91,12 @@ def replace_baseline(scan_id: int, snaps: Iterable[Dict[str, object]]) -> None:
                     scan_id,
                 ),
             )
+        # New baseline means "current state is the new normal".
+        # Any outstanding unacknowledged alerts become obsolete and should stop re-alerting.
+        cur.execute(
+            "UPDATE file_events SET acknowledged=TRUE, acknowledged_by='system:baseline', acknowledged_at=NOW() "
+            "WHERE acknowledged=FALSE"
+        )
 
 
 def load_baseline() -> Dict[str, Dict[str, object]]:
