@@ -949,11 +949,55 @@ window.addEventListener('fim-live', function (e) {
    Initialization
    ========================================================= */
 
-window.addEventListener('load', function () {
+var _apiRetryTimer = null;
+
+/** Wait until API and DB are ready (boot race). */
+async function waitForApiReady() {
+    var banner = document.getElementById('reconnect');
+    for (var i = 0; i < 60; i++) {
+        var hs = await api('/health/status');
+        if (hs && hs.db_ok) {
+            if (banner) {
+                banner.textContent = 'Connection lost. Reconnecting...';
+                banner.classList.remove('show');
+            }
+            return true;
+        }
+        if (banner) {
+            banner.textContent = 'Starting services... please wait';
+            banner.classList.add('show');
+        }
+        await sleep(2000);
+    }
+    return false;
+}
+
+/** Keep polling API if the first load happened before containers were ready. */
+function startApiRetry() {
+    if (_apiRetryTimer) return;
+    _apiRetryTimer = setInterval(async function () {
+        var hs = await api('/health/status');
+        if (!hs || !hs.db_ok) return;
+        clearInterval(_apiRetryTimer);
+        _apiRetryTimer = null;
+        var banner = document.getElementById('reconnect');
+        if (banner) {
+            banner.textContent = 'Connection lost. Reconnecting...';
+            banner.classList.remove('show');
+        }
+        route();
+        startWS();
+    }, 3000);
+}
+
+window.addEventListener('load', async function () {
     if (Notification.permission === 'default') Notification.requestPermission();
     initFileTabs();
     initFileSearch();
     window.addEventListener('hashchange', route);
+
+    var ready = await waitForApiReady();
     route();
     startWS();
+    if (!ready) startApiRetry();
 });

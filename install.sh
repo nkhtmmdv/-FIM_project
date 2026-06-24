@@ -57,9 +57,9 @@ Wants=network-online.target
 Type=oneshot
 RemainAfterExit=yes
 WorkingDirectory=${INSTALL_DIR}
-ExecStart=${DOCKER_BIN} compose up -d
+ExecStart=${INSTALL_DIR}/scripts/fim-start.sh
 ExecStop=${DOCKER_BIN} compose down
-TimeoutStartSec=120
+TimeoutStartSec=300
 
 [Install]
 WantedBy=multi-user.target
@@ -93,6 +93,7 @@ case "\${1:-status}" in
 esac
 EOF
 chmod +x /usr/local/bin/fim
+chmod +x "${INSTALL_DIR}/scripts/fim-start.sh" "${INSTALL_DIR}/scripts/fim-open-dashboard.sh"
 echo "[OK] Global command 'fim' installed — use from anywhere"
 
 # ── 6. Auto-open browser on desktop login ─────────────────────────────────
@@ -102,8 +103,8 @@ cat > "${AUTOSTART_DIR}/fim-sentinel-browser.desktop" << EOF
 [Desktop Entry]
 Type=Application
 Name=FIM Sentinel Dashboard
-Comment=Open FIM Sentinel dashboard on login
-Exec=bash -c 'sleep 5 && xdg-open http://localhost:8080'
+Comment=Open FIM Sentinel dashboard when services are ready
+Exec=${INSTALL_DIR}/scripts/fim-open-dashboard.sh
 Icon=security-high
 Terminal=false
 X-GNOME-Autostart-enabled=true
