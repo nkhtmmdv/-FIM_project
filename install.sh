@@ -23,6 +23,7 @@ if [ ! -f "${ENV_FILE}" ]; then
     DB_PASS=$(openssl rand -hex 24)
 
     cat > "${ENV_FILE}" << EOF
+POSTGRES_HOST=postgres
 POSTGRES_USER=fim
 POSTGRES_PASSWORD=${DB_PASS}
 POSTGRES_DB=fim
@@ -35,6 +36,7 @@ EOF
     echo "[OK] .env created with unique random secrets for this machine"
 else
     echo "[--] .env already exists, skipping"
+    grep -q '^POSTGRES_HOST=' "${ENV_FILE}" || echo 'POSTGRES_HOST=postgres' >> "${ENV_FILE}"
 fi
 
 # ── 2. Docker check ────────────────────────────────────────────────────────
@@ -73,7 +75,11 @@ echo "[OK] Autostart registered (${SERVICE_FILE})"
 # ── 4. First launch ────────────────────────────────────────────────────────
 echo "[..] Building and starting FIM Sentinel (this may take 5-10 minutes on first run)..."
 cd "${INSTALL_DIR}"
-docker compose up -d --build
+if ! docker compose up -d --build; then
+    echo "[ERR] docker compose failed — API logs:"
+    docker compose logs api --tail=40 || true
+    exit 1
+fi
 echo "[OK] FIM Sentinel started"
 systemctl start "${SERVICE_NAME}" 2>/dev/null || true
 
@@ -90,12 +96,13 @@ case "\${1:-status}" in
     status)  systemctl status ${SERVICE_NAME} --no-pager -l ;;
     update)  bash "${INSTALL_DIR}/fim-update.sh" ;;
     open)    bash "${INSTALL_DIR}/scripts/fim-open-dashboard.sh" ;;
+    doctor)  bash "${INSTALL_DIR}/scripts/fim-doctor.sh" ;;
     setup)   echo "Run: sudo bash ${INSTALL_DIR}/install.sh" ;;
-    *)       echo "Usage: fim {start|stop|restart|status|logs|update|open|setup}" ;;
+    *)       echo "Usage: fim {start|stop|restart|status|logs|update|open|doctor|setup}" ;;
 esac
 EOF
 chmod +x /usr/local/bin/fim
-chmod +x "${INSTALL_DIR}/scripts/fim-start.sh" "${INSTALL_DIR}/scripts/fim-open-dashboard.sh" "${INSTALL_DIR}/scripts/fim-git-sync.sh"
+chmod +x "${INSTALL_DIR}/scripts/fim-start.sh" "${INSTALL_DIR}/scripts/fim-open-dashboard.sh" "${INSTALL_DIR}/scripts/fim-git-sync.sh" "${INSTALL_DIR}/scripts/fim-doctor.sh"
 echo "[OK] Global command 'fim' installed — use from anywhere"
 
 # ── 6. Auto-open browser on desktop login ─────────────────────────────────

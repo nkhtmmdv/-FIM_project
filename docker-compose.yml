@@ -35,17 +35,17 @@ services:
     ports: ["${API_PORT:-8000}:8000"]
     networks: [fim-internal, fim-external]
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health/status')\""]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health/live', timeout=3)"]
       interval: 10s
       timeout: 5s
-      retries: 6
-      start_period: 40s
+      retries: 12
+      start_period: 60s
 
   dashboard:
     build: ./dashboard
     restart: unless-stopped
     depends_on:
-      api: { condition: service_healthy }
+      api: { condition: service_started }
     ports: ["${HTTP_PORT:-8080}:80"]
     networks: [fim-internal, fim-external]
 

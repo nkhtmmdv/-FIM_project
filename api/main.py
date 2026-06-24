@@ -40,7 +40,20 @@ def startup() -> None:
     """Initialise app dependencies."""
     validate_secrets()
     init_pool()
-    ensure_local_user()
+    for attempt in range(15):
+        try:
+            ensure_local_user()
+            return
+        except Exception:
+            if attempt >= 14:
+                raise
+            time.sleep(2)
+
+
+@app.get('/api/v1/health/live')
+def health_live():
+    """Liveness probe for Docker (no database required)."""
+    return {'ok': True}
 
 
 @app.websocket('/ws/live')

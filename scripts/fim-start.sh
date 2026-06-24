@@ -26,7 +26,7 @@ done
 
 echo "[fim-start] Waiting for API on port ${HTTP_PORT}..."
 for _ in $(seq 1 90); do
-    if curl -sf "http://127.0.0.1:${HTTP_PORT}/api/v1/health/status" >/dev/null 2>&1; then
+    if curl -sf "http://127.0.0.1:${HTTP_PORT}/api/v1/health/live" >/dev/null 2>&1; then
         echo "[fim-start] API is ready"
         exit 0
     fi
