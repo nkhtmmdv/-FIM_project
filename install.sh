@@ -89,7 +89,9 @@ case "\${1:-status}" in
     logs)    docker compose logs -f --tail=50 ;;
     status)  systemctl status ${SERVICE_NAME} --no-pager -l ;;
     update)  git pull && docker compose up -d --build ;;
-    *)       echo "Usage: fim {start|stop|restart|status|logs|update}" ;;
+    open)    bash "${INSTALL_DIR}/scripts/fim-open-dashboard.sh" ;;
+    setup)   echo "Run: sudo bash ${INSTALL_DIR}/install.sh" ;;
+    *)       echo "Usage: fim {start|stop|restart|status|logs|update|open|setup}" ;;
 esac
 EOF
 chmod +x /usr/local/bin/fim
@@ -99,16 +101,33 @@ echo "[OK] Global command 'fim' installed — use from anywhere"
 # ── 6. Auto-open browser on desktop login ─────────────────────────────────
 AUTOSTART_DIR="/etc/xdg/autostart"
 mkdir -p "${AUTOSTART_DIR}"
-cat > "${AUTOSTART_DIR}/fim-sentinel-browser.desktop" << EOF
+DESKTOP_FILE="${AUTOSTART_DIR}/fim-sentinel-browser.desktop"
+cat > "${DESKTOP_FILE}" << EOF
 [Desktop Entry]
 Type=Application
 Name=FIM Sentinel Dashboard
-Comment=Open FIM Sentinel dashboard when services are ready
-Exec=${INSTALL_DIR}/scripts/fim-open-dashboard.sh
+Comment=Open FIM Sentinel dashboard on login
+Exec=bash ${INSTALL_DIR}/scripts/fim-open-dashboard.sh
 Icon=security-high
 Terminal=false
 X-GNOME-Autostart-enabled=true
+X-GNOME-Autostart-Delay=5
+OnlyShowIn=GNOME;XFCE;KDE;LXQt;Unity;MATE;Cinnamon;
 EOF
+chmod 644 "${DESKTOP_FILE}"
+
+# Also install for the user who ran sudo (e.g. kali)
+REAL_USER="${SUDO_USER:-${USER:-}}"
+if [ -n "${REAL_USER}" ] && [ "${REAL_USER}" != "root" ]; then
+    USER_HOME="$(getent passwd "${REAL_USER}" | cut -d: -f6)"
+    if [ -n "${USER_HOME}" ]; then
+        USER_AUTOSTART="${USER_HOME}/.config/autostart"
+        mkdir -p "${USER_AUTOSTART}"
+        cp "${DESKTOP_FILE}" "${USER_AUTOSTART}/fim-sentinel-browser.desktop"
+        chown -R "${REAL_USER}:${REAL_USER}" "${USER_AUTOSTART}"
+        echo "[OK] Browser autostart also installed for user ${REAL_USER}"
+    fi
+fi
 echo "[OK] Browser will open automatically on desktop login"
 
 echo ""
