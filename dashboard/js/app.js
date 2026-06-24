@@ -7,7 +7,6 @@
    Constants & State
    ========================================================= */
 const API = '/api/v1';
-let token = localStorage.getItem('fimToken') || '';
 let currentPage = 'dashboard';
 let scanInterval = 30;
 let countdownTimer = null;
@@ -16,6 +15,7 @@ let alertsPageOffset = 0;
 let filesPageOffset = 0;
 let tokenIsSet = false;   // true when a Telegram token is already saved in DB
 const PAGE_SIZE = 50;
+let _alertsCurrent = [];
 
 /** Promise-based sleep. */
 function sleep(ms) { return new Promise(function(r) { setTimeout(r, ms); }); }
@@ -25,59 +25,24 @@ function sleep(ms) { return new Promise(function(r) { setTimeout(r, ms); }); }
    ========================================================= */
 
 /**
- * Authenticated fetch wrapper. Auto-refreshes JWT on 401, redirects to login if refresh fails.
+ * Fetch wrapper for API calls.
  * @param {string} path - API path after /api/v1
  * @param {object} opts - Fetch options
  * @returns {Promise<any>}
  */
 async function api(path, opts) {
     opts = opts || {};
-    var headers = {
-        'Content-Type': 'application/json',
-        'Authorization': token ? 'Bearer ' + token : ''
-    };
+    var headers = { 'Content-Type': 'application/json' };
     if (opts.headers) {
         Object.keys(opts.headers).forEach(function (k) { headers[k] = opts.headers[k]; });
     }
     opts.headers = headers;
     var r = await fetch(API + path, opts);
-    if (r.status === 401) {
-        // Try to refresh the access token once
-        var refreshed = await _tryRefresh();
-        if (!refreshed) { showPage('login'); return null; }
-        opts.headers['Authorization'] = 'Bearer ' + token;
-        r = await fetch(API + path, opts);
-        if (r.status === 401) { showPage('login'); return null; }
-    }
     try {
         return await r.json();
     } catch (e) {
         return null;
     }
-}
-
-/**
- * Attempt to refresh the access token using the stored refresh token.
- * @returns {Promise<boolean>} true if refresh succeeded
- */
-async function _tryRefresh() {
-    var rt = localStorage.getItem('fimRefresh');
-    if (!rt) return false;
-    try {
-        var r = await fetch(API + '/auth/refresh', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ refresh_token: rt })
-        });
-        if (!r.ok) return false;
-        var data = await r.json();
-        if (data && data.access_token) {
-            token = data.access_token;
-            localStorage.setItem('fimToken', token);
-            return true;
-        }
-    } catch (e) {}
-    return false;
 }
 
 /* =========================================================
@@ -86,7 +51,7 @@ async function _tryRefresh() {
 
 /**
  * Display the specified page and hide all others.
- * @param {string} page - Page name (dashboard, alerts, history, settings, login)
+ * @param {string} page - Page name (dashboard, alerts, history, settings)
  */
 function showPage(page) {
     currentPage = page;
@@ -98,13 +63,10 @@ function showPage(page) {
         a.classList.toggle('active', a.getAttribute('data-page') === page);
     });
 
-    var isLoggedIn = !!token;
-    document.querySelector('.nav').style.display = (page === 'login') ? 'none' : '';
-
-    if (page === 'dashboard' && isLoggedIn) loadDashboard();
-    else if (page === 'alerts' && isLoggedIn) loadAlerts();
-    else if (page === 'history' && isLoggedIn) loadHistory();
-    else if (page === 'settings' && isLoggedIn) loadSettings();
+    if (page === 'dashboard') loadDashboard();
+    else if (page === 'alerts') loadAlerts();
+    else if (page === 'history') loadHistory();
+    else if (page === 'settings') loadSettings();
 }
 
 /**
@@ -112,7 +74,6 @@ function showPage(page) {
  */
 function route() {
     var hash = location.hash.replace('#', '') || 'dashboard';
-    if (!token && hash !== 'login') { showPage('login'); return; }
     showPage(hash);
 }
 
@@ -180,6 +141,15 @@ async function loadDashboard() {
     animateNum('alertCount', s.alerts);
     animateNum('critical', s.critical);
 
+    // Unacknowledged badge (persistent until ack/baseline)
+    var ub = document.getElementById('unackedBadge');
+    var unacked = s.unacknowledged || 0;
+    if (ub) {
+        ub.textContent = 'Unacked: ' + unacked;
+        ub.style.display = unacked > 0 ? '' : 'none';
+        ub.className = 'badge ' + (unacked > 0 ? 'WARNING' : 'INFO');
+    }
+
     var crit = document.getElementById('cardCritical');
     if (crit) crit.classList.toggle('glow-red', (s.critical || 0) > 0);
 
@@ -187,6 +157,14 @@ async function loadDashboard() {
     await loadFeed();
 
     await loadLastScan();
+
+    // Get-started panel (show if baseline not created)
+    var bl = await api('/baseline/status');
+    var gs = document.getElementById('getStarted');
+    if (gs) {
+        var hasBaseline = bl && (parseInt(bl.file_count, 10) || 0) > 0;
+        gs.style.display = hasBaseline ? 'none' : '';
+    }
 }
 
 /**
@@ -243,6 +221,16 @@ async function loadLastScan() {
     if (!scan) return;
     document.getElementById('lastScan').textContent = fmtTime(scan.completed_at || scan.started_at);
     document.getElementById('scanState').textContent = scan.status === 'RUNNING' ? 'Scanning...' : 'Live';
+
+    // Health indicator (API/DB/Scanner)
+    var ht = document.getElementById('healthText');
+    var hs = await api('/health/status');
+    if (ht && hs) {
+        var apiOk = 'OK';
+        var dbOk = hs.db_ok ? 'OK' : 'DOWN';
+        var scOk = hs.scanner_online ? 'OK' : ('OFF (' + (hs.scanner_last_seen_seconds || '?') + 's)');
+        ht.textContent = 'API: ' + apiOk + ' | DB: ' + dbOk + ' | Scanner: ' + scOk;
+    }
     // Sync interval from DB so ring uses the correct period
     var cfg = await api('/settings');
     if (cfg && cfg.scan_interval_seconds) {
@@ -362,6 +350,7 @@ async function loadAlerts() {
 
     var data = await api('/alerts' + params);
     if (!data) return;
+    _alertsCurrent = data;
     var body = document.getElementById('alertsBody');
     body.innerHTML = data.map(function (a) {
         return '<tr>' +
@@ -377,6 +366,25 @@ async function loadAlerts() {
     renderPagination('alertsPagination', alertsPageOffset, data.length, function (o) {
         alertsPageOffset = o; loadAlerts();
     });
+}
+
+/**
+ * Acknowledge all alerts currently visible in the Alerts table.
+ */
+async function ackVisibleAlerts() {
+    if (!_alertsCurrent || !_alertsCurrent.length) {
+        showToast('No alerts to acknowledge on this page', 'warning');
+        return;
+    }
+    if (!confirm('Acknowledge ALL alerts currently shown on this page?')) return;
+    for (var i = 0; i < _alertsCurrent.length; i++) {
+        var a = _alertsCurrent[i];
+        if (!a || !a.id) continue;
+        await api('/alerts/' + a.id + '/acknowledge', { method: 'PUT' });
+    }
+    showToast('Acknowledged ' + _alertsCurrent.length + ' alert(s)', 'success');
+    loadDashboard();
+    loadAlerts();
 }
 
 /**
@@ -521,12 +529,11 @@ async function loadSettings() {
             'Files: <b>' + (bl.file_count || 0) + '</b> | Created: <b>' + fmtTime(bl.created_at) + '</b> | Updated: <b>' + fmtTime(bl.updated_at) + '</b>';
     }
 
-    // Load personal Telegram credentials from user profile
-    var prof = await fetch(API + '/auth/profile', { headers: { 'Authorization': 'Bearer ' + token } });
-    if (prof.ok) {
-        var p = await prof.json();
-        if (p.telegram_chat_id) document.getElementById('tgChat').value = p.telegram_chat_id;
-        tokenIsSet = !!p.telegram_bot_token_set;
+    // Load personal Telegram credentials from profile
+    var prof = await api('/auth/profile');
+    if (prof) {
+        if (prof.telegram_chat_id) document.getElementById('tgChat').value = prof.telegram_chat_id;
+        tokenIsSet = !!prof.telegram_bot_token_set;
         _updateTokenIndicator(tokenIsSet);
     }
 
@@ -608,26 +615,11 @@ async function enableFile(encodedPath) {
 }
 
 async function purgeFile(encodedPath) {
-    var url = API + '/files/' + encodedPath + '?permanent=true';
-    console.log('[PURGE] DELETE', url);
-    var r;
-    try {
-        r = await fetch(url, {
-            method: 'DELETE',
-            headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }
-        });
-    } catch (e) {
-        console.error('[PURGE] network error', e);
-        showToast('Network error: ' + e.message, 'error');
-        return;
-    }
-    var bodyText = '';
-    try { bodyText = await r.text(); } catch(e) {}
-    console.log('[PURGE] status:', r.status, 'body:', bodyText);
-    if (r.ok) {
-        showToast('Deleted (200): ' + decodeURIComponent(encodedPath), 'success');
+    var res = await api('/files/' + encodedPath + '?permanent=true', { method: 'DELETE' });
+    if (res && res.ok) {
+        showToast('Deleted: ' + decodeURIComponent(encodedPath), 'success');
     } else {
-        showToast('HTTP ' + r.status + ' — ' + (bodyText.slice(0, 200) || 'no body'), 'error');
+        showToast('Delete failed: ' + (res && res.detail ? res.detail : 'request failed'), 'error');
     }
     setTimeout(loadSettings, 400);
 }
@@ -691,22 +683,14 @@ async function createBaseline() {
 }
 
 /**
- * Reset baseline for a specific file (requires password confirmation).
+ * Reset baseline for a specific file.
  * @param {string} encodedPath - URI-encoded file path
  */
-function resetBaseline(encodedPath) {
-    document.getElementById('modalTitle').textContent = 'Reset Baseline';
-    document.getElementById('modalText').textContent = 'Enter your password to confirm baseline reset for this file.';
-    document.getElementById('modalInput').style.display = '';
-    document.getElementById('modalInput').value = '';
-    document.getElementById('modalBackdrop').classList.add('open');
-    document.getElementById('modalConfirm').onclick = async function () {
-        var pw = document.getElementById('modalInput').value;
-        await api('/baseline/reset/' + encodedPath, { method: 'POST', body: JSON.stringify({ password: pw }) });
-        closeModal();
-        closeDrawer();
-        loadDashboard();
-    };
+async function resetBaseline(encodedPath) {
+    if (!confirm('Reset baseline for this file?')) return;
+    await api('/baseline/reset/' + encodedPath, { method: 'POST' });
+    closeDrawer();
+    loadDashboard();
 }
 
 /**
@@ -721,112 +705,6 @@ async function exportBaseline() {
         a.download = 'fim-baseline-' + new Date().toISOString().slice(0, 10) + '.json';
         a.click();
     }
-}
-
-/* =========================================================
-   Auth
-   ========================================================= */
-
-/**
- * Login using credentials from the login form (or passed directly).
- * @param {string} [forceUser] - Optional username override
- * @param {string} [forcePass] - Optional password override
- */
-async function login(forceUser, forcePass) {
-    var user = forceUser || document.getElementById('loginUser').value.trim();
-    var pass = forcePass || document.getElementById('loginPass').value;
-    var errEl = document.getElementById('loginError');
-    if (errEl) errEl.style.display = 'none';
-
-    if (!user || !pass) {
-        if (errEl) { errEl.textContent = 'Enter username and password'; errEl.style.display = ''; }
-        return;
-    }
-
-    var r;
-    try {
-        r = await fetch(API + '/auth/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username: user, password: pass })
-        });
-    } catch (e) {
-        if (errEl) { errEl.textContent = 'Server unavailable'; errEl.style.display = ''; }
-        return;
-    }
-    var data = await r.json();
-    if (r.ok && data && data.access_token) {
-        token = data.access_token;
-        localStorage.setItem('fimToken', token);
-        if (data.refresh_token) localStorage.setItem('fimRefresh', data.refresh_token);
-        location.hash = '#dashboard';
-        route();
-        if (!socket) startWS();
-    } else {
-        var msg = 'Login failed';
-        if (data && data.detail) {
-            if (Array.isArray(data.detail)) {
-                msg = data.detail.map(function(e){ return e.msg || JSON.stringify(e); }).join(', ');
-            } else {
-                msg = data.detail;
-            }
-        }
-        if (errEl) { errEl.textContent = msg; errEl.style.display = ''; }
-    }
-}
-
-/** Show registration panel. */
-function showRegister() {
-    document.getElementById('loginPanel').style.display = 'none';
-    document.getElementById('registerPanel').style.display = '';
-}
-
-/** Show login panel. */
-function showLogin() {
-    document.getElementById('registerPanel').style.display = 'none';
-    document.getElementById('loginPanel').style.display = '';
-}
-
-/**
- * Register a new account and auto-login.
- */
-async function register() {
-    var errEl = document.getElementById('regError');
-    errEl.style.display = 'none';
-    var username = document.getElementById('regUser').value.trim();
-    var password = document.getElementById('regPass').value;
-    if (!username || !password) { errEl.textContent = 'Username and password required'; errEl.style.display = ''; return; }
-    if (password.length < 8) { errEl.textContent = 'Password must be at least 8 characters'; errEl.style.display = ''; return; }
-
-    var r;
-    try {
-        r = await fetch(API + '/auth/register', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username: username, password: password })
-        });
-    } catch (e) {
-        errEl.textContent = 'Server unavailable'; errEl.style.display = ''; return;
-    }
-    var data = await r.json();
-    if (r.ok && data.ok) {
-        showLogin();
-        await login(username, password);
-    } else {
-        errEl.textContent = data.detail || 'Registration failed';
-        errEl.style.display = '';
-    }
-}
-
-/**
- * Logout and redirect to login page.
- */
-function logout() {
-    token = '';
-    localStorage.removeItem('fimToken');
-    localStorage.removeItem('fimRefresh');
-    stopWS();
-    showPage('login');
 }
 
 /* =========================================================
@@ -889,33 +767,24 @@ function _updateTokenIndicator(isSet) {
 }
 
 /**
- * Save personal profile (Telegram + optional password change).
+ * Save personal profile (Telegram).
  */
 async function saveProfile() {
     var tgToken  = document.getElementById('tgToken').value.trim();
     var tgChat   = document.getElementById('tgChat').value.trim();
-    var curPass  = document.getElementById('profCurPass').value;
-    var newPass  = document.getElementById('profNewPass').value;
-    var body = {
-        telegram_bot_token: tgToken,
-        telegram_chat_id:   tgChat,
-        current_password:   curPass,
-        new_password:       newPass
-    };
-    var r = await fetch(API + '/auth/profile', {
+    var data = await api('/auth/profile', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-        body: JSON.stringify(body)
+        body: JSON.stringify({
+            telegram_bot_token: tgToken,
+            telegram_chat_id: tgChat
+        })
     });
-    var data = await r.json();
-    if (r.ok && data.ok) {
+    if (data && data.ok) {
         showToast('Profile saved!', 'success');
-        document.getElementById('profCurPass').value = '';
-        document.getElementById('profNewPass').value = '';
         if (tgToken) { tokenIsSet = true; }
         _updateTokenIndicator(tokenIsSet);
     } else {
-        showToast('Error: ' + (data.detail || 'unknown'), 'error');
+        showToast('Error: ' + (data && data.detail ? data.detail : 'unknown'), 'error');
     }
 }
 
@@ -934,11 +803,7 @@ async function testTelegramPersonal() {
     }
     // If a new token was typed save it first; otherwise use the existing DB token
     if (tgToken) { await saveProfile(); }
-    var res = await fetch(API + '/auth/test-telegram', {
-        method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + token }
-    });
-    var data = await res.json();
+    var data = await api('/auth/test-telegram', { method: 'POST' });
     if (data && data.ok) {
         showToast('\u2705 Test message sent to your Telegram!', 'success');
         tokenIsSet = true;
@@ -1088,5 +953,5 @@ window.addEventListener('load', function () {
     initFileSearch();
     window.addEventListener('hashchange', route);
     route();
-    if (token) startWS();
+    startWS();
 });

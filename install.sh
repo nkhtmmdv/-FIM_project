@@ -21,13 +21,12 @@ echo "Directory: ${INSTALL_DIR}"
 if [ ! -f "${ENV_FILE}" ]; then
     # Generate cryptographically random values unique to this machine
     DB_PASS=$(openssl rand -hex 24)
-    JWT_SEC=$(openssl rand -hex 40)
 
     cat > "${ENV_FILE}" << EOF
 POSTGRES_USER=fim
 POSTGRES_PASSWORD=${DB_PASS}
 POSTGRES_DB=fim
-JWT_SECRET=${JWT_SEC}
+LOCAL_USERNAME=local
 API_PORT=8000
 HTTP_PORT=8080
 SCAN_INTERVAL_SECONDS=60

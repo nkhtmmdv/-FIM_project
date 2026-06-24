@@ -17,10 +17,7 @@ const WS_MAX_RETRY = 30000;
 function connectWS() {
     const banner = document.getElementById('reconnect');
     const proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
-    const tok = localStorage.getItem('fimToken') || '';
-    const url = tok
-        ? proto + location.host + '/ws/live?token=' + encodeURIComponent(tok)
-        : proto + location.host + '/ws/live';
+    const url = proto + location.host + '/ws/live';
 
     try {
         socket = new WebSocket(url);
@@ -56,11 +53,9 @@ function connectWS() {
 
     socket.onclose = function (evt) {
         wsFailCount++;
-        // Codes 1002/1003/1006 with no prior connection = server doesn't support WS, stop retrying
         if (!wsEverConnected && wsFailCount >= 2) {
-            return; // give up silently — no banner, no retry
+            return;
         }
-        // Only show the red banner if we previously had a working connection
         if (wsEverConnected) {
             if (banner) banner.classList.add('show');
             var dot = document.getElementById('statusDot');
@@ -82,9 +77,7 @@ function scheduleReconnect() {
     wsRetryDelay = Math.min(wsRetryDelay * 1.5, WS_MAX_RETRY);
 }
 
-/**
- * Start WebSocket — call after successful login.
- */
+/** Start the live WebSocket connection. */
 function startWS() {
     wsFailCount = 0;
     wsRetryDelay = 2000;
@@ -92,9 +85,7 @@ function startWS() {
     connectWS();
 }
 
-/**
- * Stop WebSocket — call on logout.
- */
+/** Stop the live WebSocket connection. */
 function stopWS() {
     wsEverConnected = false;
     if (socket) { socket.onclose = null; socket.close(); socket = null; }

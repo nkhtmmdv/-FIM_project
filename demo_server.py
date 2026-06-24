@@ -7,7 +7,6 @@ from urllib.parse import urlparse
 
 # Serve from dashboard/ directory
 DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'dashboard')
-FAKE_TOKEN = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbiJ9.fake'
 
 SETTINGS_STORE = {}
 USER_STORE = {
@@ -73,24 +72,6 @@ class Handler(SimpleHTTPRequestHandler):
     def do_POST(self):
         path = urlparse(self.path).path
         body = self._body()
-
-        if path == '/api/v1/auth/login':
-            return self._json({
-                'access_token': FAKE_TOKEN,
-                'refresh_token': 'refresh-' + FAKE_TOKEN,
-                'token_type': 'bearer'
-            })
-
-        if path == '/api/v1/auth/register':
-            USER_STORE[body.get('username', 'user')] = {
-                'username': body.get('username', 'user'),
-                'role': 'analyst',
-                'telegram_chat_id': body.get('telegram_chat_id', ''),
-                'telegram_bot_token': body.get('telegram_bot_token', ''),
-                'created_at': '2025-05-22T00:00:00Z',
-                'last_login': None
-            }
-            return self._json({'ok': True})
 
         if path == '/api/v1/auth/test-telegram':
             return self._json({'ok': True})

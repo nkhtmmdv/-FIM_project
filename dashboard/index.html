@@ -29,40 +29,27 @@
     <div class="status">
       <span class="dot" id="statusDot"></span>
       <span id="scanState">Live</span>
+      <span id="healthText" style="color:var(--muted)">API: -- | DB: -- | Scanner: --</span>
       <span>Last scan: <b id="lastScan">--</b></span>
     </div>
-    <button class="btn sm" id="logoutBtn" onclick="logout()">Logout</button>
+    <div id="unackedBadge" class="badge WARNING" style="display:none;margin-right:10px">Unacked: 0</div>
   </div>
 </nav>
 
-<!-- ==================== PAGE: LOGIN ==================== -->
-<div id="page-login" class="page">
-  <div style="max-width:380px;margin:80px auto;padding:0 24px">
-    <div class="panel" id="loginPanel">
-      <h2 style="margin-bottom:20px;text-align:center">Sign In</h2>
-      <input id="loginUser" class="input" placeholder="Username" style="margin-bottom:12px" onkeydown="if(event.key==='Enter')login()">
-      <input id="loginPass" class="input" placeholder="Password" type="password" style="margin-bottom:16px" onkeydown="if(event.key==='Enter')login()">
-      <button class="btn primary" style="width:100%" onclick="login()">Login</button>
-      <p id="loginError" style="color:var(--red);font-size:12px;margin-top:10px;display:none"></p>
-      <p style="text-align:center;margin-top:14px;font-size:13px;color:var(--muted)">
-        No account? <a href="#" onclick="showRegister()" style="color:var(--accent)">Register</a>
-      </p>
-    </div>
-    <div class="panel" id="registerPanel" style="display:none">
-      <h2 style="margin-bottom:20px;text-align:center">Create Account</h2>
-      <input id="regUser" class="input" placeholder="Username" style="margin-bottom:12px" onkeydown="if(event.key==='Enter')register()">
-      <input id="regPass" class="input" placeholder="Password (min 8 chars)" type="password" style="margin-bottom:16px" onkeydown="if(event.key==='Enter')register()">
-      <button class="btn primary" style="width:100%" onclick="register()">Create Account</button>
-      <p id="regError" style="color:var(--red);font-size:12px;margin-top:10px;display:none"></p>
-      <p style="text-align:center;margin-top:14px;font-size:13px;color:var(--muted)">
-        Already have account? <a href="#" onclick="showLogin()" style="color:var(--accent)">Sign In</a>
-      </p>
-    </div>
-  </div>
-</div>
-
 <!-- ==================== PAGE: DASHBOARD ==================== -->
 <div id="page-dashboard" class="page">
+  <div id="getStarted" class="panel" style="display:none;margin-bottom:16px">
+    <h2 class="mb-8">Get started</h2>
+    <p style="color:var(--muted);font-size:13px;margin:0 0 12px 0">
+      Baseline is not created yet. Create it once so FIM knows what “normal” looks like.
+    </p>
+    <div class="row gap-sm" style="flex-wrap:wrap">
+      <button class="btn primary" onclick="createBaseline()">Create New Baseline</button>
+      <button class="btn" onclick="location.hash='#settings';route()">Open Settings</button>
+      <button class="btn" onclick="triggerScan()">Run a scan</button>
+    </div>
+  </div>
+
   <!-- Stat cards -->
   <section class="grid-4">
     <div class="card" id="cardTotal"><small>Total Files</small><h1 id="total">0</h1></div>
@@ -146,6 +133,7 @@
             <option value="OWNER_CHANGED">Owner</option>
           </select>
           <input class="input" id="alertPathSearch" placeholder="File path..." style="width:200px" oninput="loadAlerts()">
+          <button class="btn" onclick="ackVisibleAlerts()" title="Acknowledge all alerts shown on this page">Acknowledge visible</button>
           <button class="btn" onclick="exportCSV()">Export CSV</button>
         </div>
       </div>
@@ -236,12 +224,6 @@
           <input class="input" id="tgToken" placeholder="Your Bot Token (from @BotFather)" style="margin-bottom:4px">
           <div id="tgTokenIndicator" style="font-size:11px;color:#4ade80;margin-bottom:6px;min-height:16px"></div>
           <input class="input" id="tgChat" placeholder="Your Chat ID (numeric)" style="margin-bottom:12px">
-          <div id="passwordSection">
-            <hr style="border:none;border-top:1px solid rgba(255,255,255,.07);margin:12px 0">
-            <p style="color:var(--muted);font-size:12px;margin-bottom:8px">Change password (optional)</p>
-            <input class="input" id="profCurPass" placeholder="Current password" type="password" style="margin-bottom:8px">
-            <input class="input" id="profNewPass" placeholder="New password (min 8 chars)" type="password" style="margin-bottom:12px">
-          </div>
           <div class="row gap-sm">
             <button class="btn primary" onclick="saveProfile()">Save Profile</button>
             <button class="btn" onclick="testTelegramPersonal()">Test Telegram</button>
@@ -275,7 +257,7 @@
   <div class="modal">
     <h2 id="modalTitle">Confirm</h2>
     <p id="modalText" style="color:var(--muted);margin-bottom:16px"></p>
-    <input class="input" id="modalInput" placeholder="Enter password to confirm" type="password" style="margin-bottom:16px;display:none">
+    <input class="input" id="modalInput" placeholder="" type="text" style="margin-bottom:16px;display:none">
     <div class="row" style="justify-content:flex-end;gap:8px">
       <button class="btn" onclick="closeModal()">Cancel</button>
       <button class="btn danger" id="modalConfirm">Confirm</button>
