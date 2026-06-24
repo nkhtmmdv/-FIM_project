@@ -1,6 +1,9 @@
 """FastAPI application for FIM."""
 import asyncio
-import os, signal, time
+import atexit
+import os
+import threading
+import time
 from typing import Set
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -116,11 +119,9 @@ def _send_api_shutdown_alert():
         pass
 
 
-def _term(signum: int, frame: object) -> None:
-    """Handle termination signal with alert."""
-    _send_api_shutdown_alert()
-    raise SystemExit(0)
+def _shutdown_alert_async() -> None:
+    """Best-effort shutdown alert without blocking container stop."""
+    threading.Thread(target=_send_api_shutdown_alert, daemon=True).start()
 
 
-signal.signal(signal.SIGTERM, _term)
-signal.signal(signal.SIGINT, _term)
+atexit.register(_shutdown_alert_async)

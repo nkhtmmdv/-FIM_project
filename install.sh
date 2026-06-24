@@ -35,8 +35,16 @@ EOF
     chmod 600 "${ENV_FILE}"
     echo "[OK] .env created with unique random secrets for this machine"
 else
-    echo "[--] .env already exists, skipping"
+    echo "[--] .env already exists, normalizing"
+    awk -F= '
+        /^[[:space:]]*#/ { next }
+        /^[[:space:]]*$/ { next }
+        NF { env[$1]=$0 }
+        END { for (k in env) print env[k] }
+    ' "${ENV_FILE}" > "${ENV_FILE}.tmp"
+    mv "${ENV_FILE}.tmp" "${ENV_FILE}"
     grep -q '^POSTGRES_HOST=' "${ENV_FILE}" || echo 'POSTGRES_HOST=postgres' >> "${ENV_FILE}"
+    chmod 600 "${ENV_FILE}"
 fi
 
 # ── 2. Docker check ────────────────────────────────────────────────────────
