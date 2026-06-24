@@ -88,14 +88,14 @@ case "\${1:-status}" in
     restart) systemctl restart ${SERVICE_NAME} ;;
     logs)    docker compose logs -f --tail=50 ;;
     status)  systemctl status ${SERVICE_NAME} --no-pager -l ;;
-    update)  git pull && docker compose up -d --build ;;
+    update)  bash "${INSTALL_DIR}/fim-update.sh" ;;
     open)    bash "${INSTALL_DIR}/scripts/fim-open-dashboard.sh" ;;
     setup)   echo "Run: sudo bash ${INSTALL_DIR}/install.sh" ;;
     *)       echo "Usage: fim {start|stop|restart|status|logs|update|open|setup}" ;;
 esac
 EOF
 chmod +x /usr/local/bin/fim
-chmod +x "${INSTALL_DIR}/scripts/fim-start.sh" "${INSTALL_DIR}/scripts/fim-open-dashboard.sh"
+chmod +x "${INSTALL_DIR}/scripts/fim-start.sh" "${INSTALL_DIR}/scripts/fim-open-dashboard.sh" "${INSTALL_DIR}/scripts/fim-git-sync.sh"
 echo "[OK] Global command 'fim' installed — use from anywhere"
 
 # ── 6. Auto-open browser on desktop login ─────────────────────────────────
@@ -116,17 +116,25 @@ OnlyShowIn=GNOME;XFCE;KDE;LXQt;Unity;MATE;Cinnamon;
 EOF
 chmod 644 "${DESKTOP_FILE}"
 
-# Also install for the user who ran sudo (e.g. kali)
-REAL_USER="${SUDO_USER:-${USER:-}}"
+_install_user_autostart() {
+    local u="$1"
+    local home
+    home="$(getent passwd "${u}" 2>/dev/null | cut -d: -f6 || true)"
+    [ -z "${home}" ] && return 0
+    local ua="${home}/.config/autostart"
+    mkdir -p "${ua}"
+    cp "${DESKTOP_FILE}" "${ua}/fim-sentinel-browser.desktop"
+    chown -R "${u}:${u}" "${ua}"
+    echo "[OK] Browser autostart installed for user ${u}"
+}
+
+# User who ran sudo (e.g. kali), and kali when installer runs as root
+REAL_USER="${SUDO_USER:-}"
 if [ -n "${REAL_USER}" ] && [ "${REAL_USER}" != "root" ]; then
-    USER_HOME="$(getent passwd "${REAL_USER}" | cut -d: -f6)"
-    if [ -n "${USER_HOME}" ]; then
-        USER_AUTOSTART="${USER_HOME}/.config/autostart"
-        mkdir -p "${USER_AUTOSTART}"
-        cp "${DESKTOP_FILE}" "${USER_AUTOSTART}/fim-sentinel-browser.desktop"
-        chown -R "${REAL_USER}:${REAL_USER}" "${USER_AUTOSTART}"
-        echo "[OK] Browser autostart also installed for user ${REAL_USER}"
-    fi
+    _install_user_autostart "${REAL_USER}"
+fi
+if getent passwd kali >/dev/null 2>&1; then
+    _install_user_autostart kali
 fi
 echo "[OK] Browser will open automatically on desktop login"
 
