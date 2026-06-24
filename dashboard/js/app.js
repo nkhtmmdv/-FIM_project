@@ -37,8 +37,9 @@ async function api(path, opts) {
         Object.keys(opts.headers).forEach(function (k) { headers[k] = opts.headers[k]; });
     }
     opts.headers = headers;
-    var r = await fetch(API + path, opts);
     try {
+        var r = await fetch(API + path, opts);
+        if (!r.ok) return null;
         return await r.json();
     } catch (e) {
         return null;
@@ -73,7 +74,8 @@ function showPage(page) {
  * Hash-based route handler.
  */
 function route() {
-    var hash = location.hash.replace('#', '') || 'dashboard';
+    var hash = (location.hash.replace(/^#\/?/, '') || 'dashboard').split('?')[0];
+    if (!document.getElementById('page-' + hash)) hash = 'dashboard';
     showPage(hash);
 }
 
@@ -217,12 +219,6 @@ async function loadFeed() {
  * Fetches the real interval from settings before starting.
  */
 async function loadLastScan() {
-    var scan = await api('/scan/status');
-    if (!scan) return;
-    document.getElementById('lastScan').textContent = fmtTime(scan.completed_at || scan.started_at);
-    document.getElementById('scanState').textContent = scan.status === 'RUNNING' ? 'Scanning...' : 'Live';
-
-    // Health indicator (API/DB/Scanner)
     var ht = document.getElementById('healthText');
     var hs = await api('/health/status');
     if (ht && hs) {
@@ -231,7 +227,13 @@ async function loadLastScan() {
         var scOk = hs.scanner_online ? 'OK' : ('OFF (' + (hs.scanner_last_seen_seconds || '?') + 's)');
         ht.textContent = 'API: ' + apiOk + ' | DB: ' + dbOk + ' | Scanner: ' + scOk;
     }
-    // Sync interval from DB so ring uses the correct period
+
+    var scan = await api('/scan/status');
+    if (scan) {
+        document.getElementById('lastScan').textContent = fmtTime(scan.completed_at || scan.started_at);
+        document.getElementById('scanState').textContent = scan.status === 'RUNNING' ? 'Scanning...' : 'Live';
+    }
+
     var cfg = await api('/settings');
     if (cfg && cfg.scan_interval_seconds) {
         scanInterval = Math.max(10, parseInt(cfg.scan_interval_seconds, 10) || 30);

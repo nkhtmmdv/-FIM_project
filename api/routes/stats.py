@@ -61,6 +61,24 @@ def _check_scanner_watchdog():
 threading.Thread(target=_check_scanner_watchdog, daemon=True).start()
 
 
+@router.get('/health/status')
+def health_status(user=Depends(current_user)):
+    """Return API, database, and scanner health."""
+    db_ok = False
+    try:
+        fetch_one('SELECT 1 AS ok')
+        db_ok = True
+    except Exception:
+        pass
+    with _heartbeat_lock:
+        elapsed = max(0, int(time.time() - _last_scanner_heartbeat))
+    return {
+        'db_ok': db_ok,
+        'scanner_online': elapsed < 120,
+        'scanner_last_seen_seconds': elapsed,
+    }
+
+
 @router.post('/health/scanner-heartbeat')
 def scanner_heartbeat():
     """Receive heartbeat from scanner service."""
@@ -71,7 +89,16 @@ def scanner_heartbeat():
 @router.get('/stats/summary')
 def summary(user=Depends(current_user)):
     """Return dashboard summary."""
-    return fetch_one("SELECT (SELECT COUNT(*) FROM monitored_files WHERE is_active) total_files,(SELECT COUNT(*) FROM monitored_files WHERE is_active)-COUNT(*) clean,COUNT(*) alerts,COUNT(*) FILTER (WHERE severity='CRITICAL') critical FROM file_events WHERE detected_at > NOW()-INTERVAL '24 hours'")
+    return fetch_one(
+        "SELECT "
+        "(SELECT COUNT(*) FROM monitored_files WHERE is_active) AS total_files, "
+        "(SELECT COUNT(*) FROM monitored_files WHERE is_active) "
+        "- (SELECT COUNT(*) FROM file_events WHERE detected_at > NOW() - INTERVAL '24 hours') AS clean, "
+        "(SELECT COUNT(*) FROM file_events WHERE detected_at > NOW() - INTERVAL '24 hours') AS alerts, "
+        "(SELECT COUNT(*) FROM file_events "
+        "WHERE detected_at > NOW() - INTERVAL '24 hours' AND severity = 'CRITICAL') AS critical, "
+        "(SELECT COUNT(*) FROM file_events WHERE acknowledged = FALSE) AS unacknowledged"
+    )
 @router.get('/stats/timeline')
 def timeline(user=Depends(current_user)):
     """Return hourly alert timeline."""
